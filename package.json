@@ -1,0 +1,36 @@
+{
+  "name": "rubban",
+  "productName": "Rubban",
+  "version": "0.10.7",
+  "description": "Independent Kubernetes desktop workbench and self-hosted services",
+  "private": true,
+  "license": "MIT",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "web": "node server/start.cjs",
+    "build:ui": "node scripts/build-ui.cjs",
+    "test": "node --test server/*.test.cjs services/*.test.cjs scripts/*.test.cjs ui/*.test.mjs",
+    "package:win": "node scripts/package-win.cjs",
+    "package:mac": "node scripts/package-mac.cjs",
+    "package:all": "node scripts/package-win.cjs && node scripts/package-mac.cjs",
+    "team": "node services/team-hub.cjs",
+    "agent": "node services/agent.cjs",
+    "mcp": "node services/mcp.cjs"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "1.1.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "ws": "8.22.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.9.1",
+    "esbuild": "0.28.2"
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  }
+}
