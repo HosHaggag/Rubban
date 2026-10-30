@@ -22,6 +22,8 @@ func run(args []string) int {
 		return 0
 	case "web":
 		return runWeb(args[1:])
+	case "mcp":
+		return runMCP(args[1:])
 	case "--smoke-test":
 		return runDesktop(args)
 	default:
