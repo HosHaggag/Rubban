@@ -10,8 +10,7 @@ Project rules still apply: no animations or transitions; no confirmation dialogs
 
 ### Release pipeline / updater
 
-- **A1.** **`--smoke-test` may not fail the macOS release job.** `desktop/main.cjs` sets `process.exitCode = 1` then calls `app.quit()`; whether Electron propagates that is unverified. Replace with `await backend.close(); app.exit(1)` when `rendererErrors.length > 0`, and make the workflow step also assert on the printed JSON (`"rendererErrors":[]`).
-- **A2.** `release.yml` Windows job: add `npm test` after `package:win` so the ZIP-contents test runs on the release build (the CI matrix only covers PRs).
+- **A1–A2.** Done 2026-10-30: `--smoke-test` exits with `app.exit(1)` on renderer errors; `release.yml` smoke-tests the Windows zip (via `Expand-Archive`, exit code + `desktop-smoke.json`) and the macOS arm64 zip (asserts on the printed JSON), uploads the smoke output as artifacts, and the publish job downloads only the `release-*` artifacts.
 - **A3.** `desktop/updater.cjs` `check()` reports `ready` when `<dataDir>/updates/<asset>` already exists without re-hashing it; re-verify the SHA-256 before `install()` (cheap, the file is in a user-writable folder).
 - **A4.** `install()` refusal for `/Volumes` or temp locations compares against `os.tmpdir()` literally (macOS `/var` vs `/private/var`); use `fs.realpathSync` on both sides and add a test for the branch.
 - **A5.** `desktop/update/apply-update.sh` `write_result` escapes `message` but not `installedTo`; escape both.
@@ -60,7 +59,7 @@ None of A1–A19 had been addressed when this review ran.
 
 - **B1. Production guard: tag-only or guessed?** Today `envFor` falls back to a name guess (`/prod|prd/`), so any context with "prod" in its name gets the type-to-confirm guard without being tagged, and "Not set" does not suppress the guess (choose "other" to opt out). The plan said "opt-in by tagging". Keep the guess (safer default for your three production clusters) or make it strictly tag-based?
 - **B2. Code signing.** Windows SmartScreen and macOS Gatekeeper warnings only disappear with an OV/EV certificate (Azure Trusted Signing ≈ 10 USD/month) and an Apple Developer ID (99 USD/year) plus notarization. When bought: add `signtool` / `codesign --options runtime` + `notarytool` steps in `release.yml`, stop ad hoc re-signing in `Install-Rubban.command`, and make the updater verify the signature of the downloaded app in addition to the checksum.
-- **B4. First release.** Nothing has been tagged yet. The `## 0.11.0` section is already in `CHANGELOG.md`. Once the tree is committed and pushed, run `node scripts/release.cjs` (or tag `v0.11.0` by hand) and `git push origin main --tags`; then watch the Release workflow and do the end-to-end updater check (install 0.11.0, publish 0.11.1, see the dot, download, install, relaunch) on Windows and macOS. Those acceptance items could not be verified without a published release.
+- **B4. First release.** `v0.11.0` was tagged and pushed on 2026-10-30 to trigger the Release workflow. Watch it in the Actions tab; once the release is published, do the end-to-end updater check (install 0.11.0, publish 0.11.1, see the dot, download, install, relaunch) on Windows and macOS. Those acceptance items cannot be verified without two published releases.
 
 ---
 

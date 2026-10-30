@@ -114,8 +114,12 @@ async function start() {
       fs.writeFileSync(path.join(output, 'desktop-preview.png'), shot.toPNG());
     }
     console.log(JSON.stringify({ smoke: true, title: info.title, ready: info.ready, bodyLength: info.bodyLength, rendererErrors }));
-    if (rendererErrors.length) process.exitCode = 1;
-    app.quit();
+    if (!rendererErrors.length) { app.quit(); return; }
+    // app.quit() does not reliably carry process.exitCode; close the backend here and exit directly.
+    closing = true; updater.stop();
+    try { await backend.close(); } catch {}
+    try { fs.unlinkSync(path.join(dataDir, 'connection.json')); } catch {}
+    app.exit(1);
   }
 }
 async function fatal(error) {

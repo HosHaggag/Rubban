@@ -32,9 +32,30 @@ jobs:
         env:
           RUBBAN_BUNDLE_KUBECTL: tools-dl/kubectl.exe
           RUBBAN_BUNDLE_HELM: tools-dl/helm.exe
+      - name: Smoke test the build
+        shell: pwsh
+        env:
+          RUBBAN_DISABLE_UPDATES: '1'
+        run: |
+          $zip = Get-ChildItem release -Filter 'Rubban-*-Windows-x64.zip' | Select-Object -First 1
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath smoke
+          $exe = (Get-ChildItem smoke -Recurse -Filter Rubban.exe | Select-Object -First 1).FullName
+          $env:RUBBAN_DATA_DIR = "$PWD\smoke-data"
+          $env:RUBBAN_SMOKE_DIR = "$PWD\smoke-out"
+          $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Rubban --smoke-test exited with $($process.ExitCode)" }
+          $result = Get-Content smoke-out/desktop-smoke.json -Raw | ConvertFrom-Json
+          if ($result.rendererErrors.Count -ne 0) { throw "Renderer errors: $($result.rendererErrors -join '; ')" }
+          Write-Host "Smoke test passed: '$($result.title)', $($result.bodyLength) characters of page text"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-windows
+          path: smoke-out
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: release-windows
           path: release/*.zip
   macos:
     needs: check
@@ -62,13 +83,25 @@ jobs:
           RUBBAN_BUNDLE_KUBECTL: tools-x64/kubectl
           RUBBAN_BUNDLE_HELM: tools-x64/helm
       - name: Smoke test the arm64 build
+        env:
+          RUBBAN_DISABLE_UPDATES: '1'
+          RUBBAN_DATA_DIR: /tmp/smoke-data
+          RUBBAN_SMOKE_DIR: /tmp/smoke-out
         run: |
           mkdir -p /tmp/smoke
           ditto -x -k release/Rubban-*-macOS-arm64.zip /tmp/smoke
-          RUBBAN_DATA_DIR=/tmp/smoke-data RUBBAN_SMOKE_DIR=/tmp/smoke-out /tmp/smoke/*/Rubban.app/Contents/MacOS/Rubban --smoke-test
+          output=$(/tmp/smoke/*/Rubban.app/Contents/MacOS/Rubban --smoke-test)
+          echo "$output"
+          echo "$output" | grep -q '"rendererErrors":\[\]'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-macos
+          path: /tmp/smoke-out
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: macos
+          name: release-macos
           path: release/*.zip
   publish:
     needs: [windows, macos]
@@ -80,6 +113,7 @@ jobs:
           node-version: 24
       - uses: actions/download-artifact@v4
         with:
+          pattern: release-*
           path: release
           merge-multiple: true
       - run: node scripts/write-manifest.cjs release
