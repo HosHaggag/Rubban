@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; frame-src http://127.0.0.1:*; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'">
+  <meta name="rubban-token" content="__RUBBAN_TOKEN__">
+  <title>Rubban · رُبّان</title>
+  <link rel="stylesheet" href="/node_modules/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand"><img class="brand-mark" src="/rubban.svg" alt=""><span class="brand-en">Rubban</span><span class="brand-ar" lang="ar" dir="rtl">رُبّان</span></div>
+      <div class="context-control">
+        <span class="context-icon" data-icon="cluster"></span>
+        <div class="context-text"><label for="context">Cluster</label><select id="context"><option value="">Select a cluster…</option></select></div>
+        <span class="connection-dot" id="connection-dot" title="Connection state"></span>
+      </div>
+      <div class="context-meta"><span id="context-caption">Choose a kubeconfig context</span><button id="pin-context" class="pin-button" title="Pin selected context" aria-label="Pin selected context">☆</button></div>
+      <div id="context-favorites" class="context-favorites" aria-label="Pinned clusters"></div>
+      <div class="sidebar-search"><span class="search-icon" data-icon="search"></span><input id="nav-search" type="search" placeholder="Filter sections" aria-label="Filter sidebar sections"><kbd>/</kbd></div>
+      <nav id="navigation" aria-label="Cluster navigation"></nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-status"><span id="connection-status">No cluster selected</span><button id="reload-contexts" class="icon-button" data-icon="refresh" title="Reload kubeconfig contexts" aria-label="Reload contexts"></button></div>
+        <div class="tool-row" role="toolbar" aria-label="Workspace tools">
+          <button class="rail-button active" id="workspace-button" data-icon="workspace" title="Cluster workspace" aria-label="Cluster workspace"></button>
+          <button class="rail-button" data-section="metrics" data-icon="metrics" title="Metrics &amp; monitoring" aria-label="Metrics and monitoring"></button>
+          <button class="rail-button" data-section="ai" data-icon="ai" title="AI assistant" aria-label="AI assistant"></button>
+          <button class="rail-button" data-section="settings" data-icon="settings" title="Settings" aria-label="Settings"></button>
+        </div>
+      </div>
+    </aside>
+    <section class="workspace">
+      <header class="topbar">
+        <div id="breadcrumb">Workspace <span>/</span> Overview</div>
+        <button class="command-search" id="command-open" title="Command palette"><span class="search-icon" data-icon="search"></span><span class="command-label">Jump to resource, view or command</span><kbd>Ctrl K</kbd></button>
+        <div class="topbar-actions">
+          <div class="namespace-control"><label for="namespace">Namespace</label><select id="namespace"><option value="*">All namespaces</option></select></div>
+          <button class="icon-button" id="refresh" data-icon="refresh" title="Refresh view" aria-label="Refresh view"></button>
+          <button class="quiet compact" id="local-terminal" title="Local terminal"><span data-icon="terminal"></span>Shell</button>
+          <button class="primary compact" id="create-manifest" title="Create resource from YAML"><span data-icon="plus"></span>Create</button>
+        </div>
+      </header>
+      <div class="tabbar" id="tabbar" role="tablist" aria-label="Open views"></div>
+      <main id="main" tabindex="-1"></main>
+      <section id="dock" class="dock hidden" aria-label="Sessions"><div class="dock-resize" id="dock-resize" title="Drag to resize"></div><div class="dock-bar"><div id="dock-tabs" class="dock-tabs" role="tablist" aria-label="Sessions"></div><button class="icon-button" id="dock-new" title="New local terminal" aria-label="New local terminal">+</button><div class="spacer"></div><span id="dock-status"></span><button class="quiet compact" id="dock-copy">Copy</button><button class="icon-button" id="dock-max" title="Maximize or restore" aria-label="Maximize dock">⤢</button><button class="icon-button" id="dock-min" title="Hide dock (Ctrl+`)" aria-label="Hide dock">▁</button><button class="icon-button" id="dock-close" title="Close this session" aria-label="Close session">×</button></div><div id="dock-body" class="dock-body"></div></section>
+      <footer class="statusbar"><span class="status-conn"><span class="connection-dot" id="workspace-dot"></span><span id="workspace-context">Local workspace</span></span><span class="status-sep">/</span><span id="status-message">Ready</span><span class="spacer"></span><span id="app-version">Rubban</span></footer>
+    </section>
+  </div>
+  <aside id="drawer" class="drawer hidden" aria-label="Resource details"><div class="drawer-header"><button class="icon-button hidden" id="drawer-back" title="Back" aria-label="Back to previous resource">←</button><div class="drawer-title"><span class="eyebrow" id="drawer-kind">RESOURCE</span><h2 id="drawer-name"></h2></div><button class="icon-button" id="drawer-close" aria-label="Close resource details">×</button></div><div id="drawer-content"></div></aside>
+  <dialog id="command-dialog" class="command-dialog"><form method="dialog"><div class="command-input"><span class="search-icon" data-icon="search"></span><input id="command-search" autocomplete="off" placeholder="Go to a view or resource…" aria-label="Search commands"><button class="quiet compact">Esc</button></div></form><div id="command-results"></div><div class="command-footer">Navigate your workspace <kbd>Enter</kbd> to open</div></dialog>
+  <dialog id="action-dialog" class="action-dialog"><div id="action-content"></div></dialog>
+  <div id="toast-region" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

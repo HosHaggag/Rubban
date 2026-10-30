@@ -1,0 +1,14 @@
+node_modules/
+build/
+release/
+dist/
+outputs/
+data/
+.env
+.env.*
+!.env.example
+**/connection.json
+*.kubeconfig
+*.log
+.DS_Store
+Thumbs.db
