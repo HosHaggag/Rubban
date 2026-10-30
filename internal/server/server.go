@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/HosHaggag/rubban/internal/live"
 	"github.com/HosHaggag/rubban/internal/logging"
 	"github.com/HosHaggag/rubban/internal/version"
 )
@@ -47,6 +48,13 @@ type Options struct {
 	// Smoke enables the smoke-test reporting routes.
 	Smoke   bool
 	Version string
+	// DisableLive turns the live layer off, leaving one-shot kubectl only.
+	DisableLive bool
+	// ProxyStarter replaces `kubectl proxy` (tests). Setting it keeps the live layer on even with an
+	// injected Runner, which otherwise disables it.
+	ProxyStarter live.ProxyStarter
+	// LiveConfig tunes the live layer's timings (tests). Its Starter field is ignored.
+	LiveConfig live.Config
 }
 
 // Connection describes a started backend.
@@ -69,6 +77,7 @@ type Backend struct {
 	logger   *logging.Logger
 	kubecfgs *kubeconfigStore
 	term     terminalState
+	live     *live.Live // nil when the live layer is off
 
 	port     atomic.Int64
 	closed   atomic.Bool
@@ -108,6 +117,7 @@ func New(opts Options) *Backend {
 	}
 	b.kubecfgs = newKubeconfigStore(dataDir)
 	b.wipeTerminals()
+	b.initLive()
 	return b
 }
 
@@ -200,6 +210,7 @@ func (b *Backend) Close() error {
 		cancel()
 	}
 	b.runMu.Unlock()
+	b.live.Close()
 	b.procs.killAll()
 	b.closeTerminals()
 	if b.srv != nil {
