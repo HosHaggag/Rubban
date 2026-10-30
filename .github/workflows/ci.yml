@@ -30,7 +30,7 @@ jobs:
         with:
           version: latest
           install-go: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: runner.os == 'Linux'
         with:
           node-version: 24
