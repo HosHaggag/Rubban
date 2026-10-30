@@ -66,9 +66,39 @@
     updates: updates,
   });
 
+  // Web links never navigate the app window: they open in the system browser.
+  function external(href) {
+    try {
+      var url = new URL(href, location.href);
+      return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== location.origin ? url.href : '';
+    } catch (error) { return ''; }
+  }
+  document.addEventListener('click', function (event) {
+    var node = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+    var href = node ? external(node.getAttribute('href')) : '';
+    if (!href || event.defaultPrevented) return;
+    event.preventDefault();
+    window.rubbanDesktop.openExternal(href).catch(function () {});
+  }, true);
+  var nativeOpen = window.open;
+  window.open = function (href, target, features) {
+    var url = external(href);
+    if (url) { window.rubbanDesktop.openExternal(url).catch(function () {}); return null; }
+    return nativeOpen.call(window, href, target, features);
+  };
+
   if (smoke) {
+    // After the page settled, report what it shows; the shell writes desktop-smoke.json.
+    setTimeout(function () {
+      var text = document.body ? document.body.innerText : '';
+      call('/api/desktop/smoke-report', { title: document.title, ready: document.readyState, bodyLength: text.length, body: text.slice(0, 3000) }).catch(function () {});
+    }, 2200);
     var report = function (message, stack) { call('/api/desktop/renderer-error', { message: String(message), stack: String(stack || '') }).catch(function () {}); };
     window.addEventListener('error', function (event) { report(event.message, event.error && event.error.stack); });
     window.addEventListener('unhandledrejection', function (event) { report(event.reason && event.reason.message || event.reason, event.reason && event.reason.stack); });
+    // The Electron smoke test failed on any console error (CSP violations, failed module loads).
+    document.addEventListener('securitypolicyviolation', function (event) { report('CSP violation: ' + event.violatedDirective + ' ' + event.blockedURI, ''); });
+    var consoleError = console.error;
+    console.error = function () { report(Array.prototype.join.call(arguments, ' '), ''); return consoleError.apply(console, arguments); };
   }
 }());

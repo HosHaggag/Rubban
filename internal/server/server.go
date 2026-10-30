@@ -42,7 +42,11 @@ type Options struct {
 	UI fs.FS
 	// DesktopBridge is served at /desktop-bridge.js (empty in web mode).
 	DesktopBridge []byte
-	Version       string
+	// Desktop enables the /api/desktop/* routes (desktop app only).
+	Desktop DesktopHooks
+	// Smoke enables the smoke-test reporting routes.
+	Smoke   bool
+	Version string
 }
 
 // Connection describes a started backend.
@@ -464,6 +468,13 @@ func (b *Backend) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.URL.Path {
 	case "/api/watch", "/api/logs", "/api/terminal":
+	case "/api/desktop/events":
+		if b.opts.Desktop == nil {
+			rejectUpgrade(w, 404)
+			return
+		}
+		b.serveDesktopEvents(w, r)
+		return
 	default:
 		rejectUpgrade(w, 404)
 		return
