@@ -364,7 +364,7 @@ Each phase ends with `go vet`, `go test ./...` green, the phase's acceptance lis
 
 **Phase 7 — Build, packaging, release, CI (2–3 days).** §8. Accept: `buildtool package` zips match the layouts in §8.2; `ci.yml` green on all three runners; a `v0.12.0-rc.1` tag runs `release.yml` end to end and publishes a pre-release with `latest.json`; sizes recorded against §0.
 
-**Phase 8 — Cutover (1–2 days).** Delete `desktop/`, `server/`, `services/`, `scripts/*.cjs`, `package-lock.json`; shrink `package.json`; rewrite README §2–§5, §7, §9, §11 (install, build from source with Go, data folder, MCP launch, project layout); CHANGELOG `0.12.0: Rubban is now a single Go binary`; fold the remaining PLAN.md backend items into "done"; merge to `main`; tag `v0.12.0`; perform the 0.11.0 → 0.12.0 in-app update on Windows and macOS (PLAN.md B4) and record the result in CHANGELOG.
+**Phase 8 — Cutover (1–2 days).** *Status 2026-10-31: the deletions, `package.json`, README, THIRD-PARTY-NOTICES and CHANGELOG parts are done on `go-port`; merging to `main`, tagging `v0.12.0` and the 0.11.0 → 0.12.0 update check remain.* Delete `desktop/`, `server/`, `services/`, `scripts/*.cjs`, `package-lock.json`; shrink `package.json`; rewrite README §2–§5, §7, §9, §11 (install, build from source with Go, data folder, MCP launch, project layout); CHANGELOG `0.12.0: Rubban is now a single Go binary`; fold the remaining PLAN.md backend items into "done"; merge to `main`; tag `v0.12.0`; perform the 0.11.0 → 0.12.0 in-app update on Windows and macOS (PLAN.md B4) and record the result in CHANGELOG.
 
 Total: roughly 5–6 working weeks for one person who knows Go, including the parity harness in §13.
 

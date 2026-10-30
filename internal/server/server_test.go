@@ -212,7 +212,7 @@ func TestServesUIWithTokenAndCSP(t *testing.T) {
 			t.Fatalf("missing %s", h)
 		}
 	}
-	for path, want := range map[string]int{"/app.js": 200, "/node_modules/@xterm/xterm/css/xterm.css": 200, "/secret.txt": 404, "/missing.js": 404, "/desktop-bridge.js": 200, "/../etc/passwd": 404} {
+	for path, want := range map[string]int{"/app.js": 200, "/xterm.css": 200, "/secret.txt": 404, "/missing.js": 404, "/desktop-bridge.js": 200, "/../etc/passwd": 404} {
 		r, _ := http.Get(f.conn.URL + path)
 		r.Body.Close()
 		if r.StatusCode != want {

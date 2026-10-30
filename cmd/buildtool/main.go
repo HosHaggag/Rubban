@@ -1,4 +1,4 @@
-// Command buildtool packages, checks and releases Rubban. It replaces the Node scripts in scripts/.
+// Command buildtool packages, checks and releases Rubban.
 //
 //	go run ./cmd/buildtool <subcommand> [args]
 package main

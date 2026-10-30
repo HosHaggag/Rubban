@@ -1,5 +1,5 @@
 // Package mcp is the stdio Model Context Protocol bridge behind `rubban mcp`: read-only access to
-// the locally running Rubban backend. It is a port of services/mcp.cjs and services/kube-read.cjs.
+// the locally running Rubban backend.
 package mcp
 
 import (

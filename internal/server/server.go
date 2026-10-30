@@ -445,9 +445,7 @@ func (b *Backend) serveUI(w http.ResponseWriter, r *http.Request) error {
 		return problem("File not found", 404)
 	default:
 		file := "index.html"
-		if name == "/node_modules/@xterm/xterm/css/xterm.css" {
-			file, ext = "xterm.css", ".css"
-		} else if name != "/" {
+		if name != "/" {
 			file = strings.TrimPrefix(path.Clean(name), "/")
 		}
 		if _, ok := contentTypes[ext]; !ok || !fs.ValidPath(file) {

@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import { guessIcon, guessEnv, hashColor, clusterInfo, isProduction, CLUSTER_COLORS } from './clusters.js';
 import { CLUSTER_ICON_IDS } from './cluster-icons.js';
 
-const require = (await import('node:module')).createRequire(import.meta.url);
-
 test('icons are guessed from the provider in the context name', () => {
   assert.equal(guessIcon('gke_proj_europe-west1_tracking'), 'gcp');
   assert.equal(guessIcon('arn:aws:eks:eu-west-1:123:cluster/x'), 'aws');
@@ -30,9 +28,4 @@ test('colours are stable and come from the palette; every guessed icon exists', 
   assert.equal(hashColor('a'), hashColor('a'));
   assert.ok(CLUSTER_COLORS.includes(hashColor('anything')));
   for (const name of ['gke_a', 'eks', 'aks', 'kind-x', 'x']) assert.ok(CLUSTER_ICON_IDS.includes(guessIcon(name)));
-});
-
-test('server and UI agree on the icon list', () => {
-  const server = require('../server/kubeconfigs.cjs');
-  assert.deepEqual([...server.CLUSTER_ICONS].sort(), [...CLUSTER_ICON_IDS].sort());
 });

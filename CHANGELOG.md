@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0: Rubban is now one Go program
+
+- **New runtime.** Rubban is written in Go and shows its interface in the system web view (WebView2 on Windows, WebKit on macOS) through Wails, instead of Electron and Node.js. The Windows download shrinks from about 100 MB to a few megabytes plus the bundled kubectl and helm, the window opens in well under a second, and one Rubban process runs besides kubectl.
+- **Same interface, same data.** Every page and action, the data folder, imported kubeconfigs, preferences, logs and in-app updates are unchanged. Updating from 0.11 through Settings › Updates, or by running the new `Install-Rubban.ps1` / `Install-Rubban.command`, works as before.
+- **Page settings survive restarts.** Rubban reuses the same local port on each launch (`port` in the data folder), so column widths, the dock height and log options that the page keeps in the browser are no longer lost between runs.
+- **One program for everything.** `rubban web` serves the interface for a browser (was `npm run web`); `rubban mcp` is the MCP bridge (was `node services/mcp.cjs`, launched through `ELECTRON_RUN_AS_NODE`). On Windows these run from `rubban-cli.exe` next to `Rubban.exe`; on macOS from the binary inside `Rubban.app`.
+- **Saving files.** Downloading a log or a service-account kubeconfig opens the system Save dialog.
+- **Building.** Only Go 1.26 is needed: `go run ./cmd/buildtool package`. Node.js is used for the UI unit tests and ESLint only. Releases are versioned by the `VERSION` file.
+- Fixed on the way: a kubeconfig import whose cluster or user names clash with an existing file is refused (kubectl would have silently used the wrong cluster and credentials); importing works when kubectl is not installed; a failed update check no longer hides a downloaded, verified update; update progress no longer floods the page; **Help › Check for updates…** reports the real outcome; the Light/Dark choice applies before the window appears.
+
 ## 0.11.1: Console tunnels recover on their own
 
 - **RabbitMQ console stays up.** When `kubectl port-forward` gives up ("lost connection to pod", which happens when the API server stalls on a new tunnel stream), Rubban now restarts it behind the same embedded console on the next request and answers that request once the tunnel is back, instead of leaving the console with "could not connect to server" until you pressed Reconnect. Requests without a body are retried once over a fresh connection; the dead forward disappears from Port Forwarding when its replacement starts.

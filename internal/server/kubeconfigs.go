@@ -17,7 +17,7 @@ import (
 
 const maxKubeconfigBytes = 1024 * 1024
 
-// ClusterIcons and ClusterEnvs mirror server/kubeconfigs.cjs.
+// ClusterIcons and ClusterEnvs are the choices the Clusters page offers.
 var ClusterIcons = []string{"cluster", "gcp", "aws", "azure", "local", "production", "staging", "development", "database", "globe", "shield", "flask", "rocket", "star", "bolt", "box"}
 var ClusterEnvs = []string{"production", "staging", "development", "other", ""}
 

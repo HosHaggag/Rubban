@@ -33,7 +33,7 @@ import (
 
 const embedBridgePath = "/__rubban/bridge.js"
 
-// embedBridgeTemplate is the page-side bridge, copied verbatim from server/embed-proxy.cjs; only the
+// embedBridgeTemplate is the page-side bridge script injected into the console; only the
 // two placeholders are filled in.
 const embedBridgeTemplate = `(() => {
   const PARENTS = @PARENTS@;

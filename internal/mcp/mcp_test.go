@@ -698,7 +698,7 @@ func TestToolCallsHitFixedEndpoints(t *testing.T) {
 	}
 }
 
-// Same checks as services.test.cjs case 3: only newline JSON-RPC on stdout, no credentials in it.
+// Only newline-delimited JSON-RPC may appear on stdout, and never a credential.
 func TestStdioEmitsOnlyNewlineJSONRPCAndReportsMalformedInput(t *testing.T) {
 	be := newBackend(t, jsonBackend(`{"contexts":[]}`))
 	input := "invalid-json\n" + rpc(1, "initialize", map[string]any{"protocolVersion": "2025-06-18"}) + rpc(nil, "notifications/initialized", nil) + rpc(2, "tools/list", nil) + rpc(3, "tools/call", map[string]any{"name": "list_contexts", "arguments": map[string]any{}})

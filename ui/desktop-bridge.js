@@ -96,7 +96,7 @@
     var report = function (message, stack) { call('/api/desktop/renderer-error', { message: String(message), stack: String(stack || '') }).catch(function () {}); };
     window.addEventListener('error', function (event) { report(event.message, event.error && event.error.stack); });
     window.addEventListener('unhandledrejection', function (event) { report(event.reason && event.reason.message || event.reason, event.reason && event.reason.stack); });
-    // The Electron smoke test failed on any console error (CSP violations, failed module loads).
+    // The smoke test fails on any console error (CSP violations, failed module loads).
     document.addEventListener('securitypolicyviolation', function (event) { report('CSP violation: ' + event.violatedDirective + ' ' + event.blockedURI, ''); });
     var consoleError = console.error;
     console.error = function () { report(Array.prototype.join.call(arguments, ' '), ''); return consoleError.apply(console, arguments); };

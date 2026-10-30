@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -75,22 +74,6 @@ func TestEmbedBridgeScript(t *testing.T) {
 	tokened := embedBridgeScript([]string{"http://a", "http://b"}, strings.Repeat("ab", 32))
 	if !strings.Contains(tokened, `["http://a","http://b"]`) || !strings.Contains(tokened, `"`+strings.Repeat("ab", 32)+`"`) {
 		t.Fatal("token or origins not substituted")
-	}
-}
-
-// While the Node source still exists the Go bridge must stay byte-identical to it.
-func TestEmbedBridgeMatchesNodeSource(t *testing.T) {
-	source, err := os.ReadFile("../../server/embed-proxy.cjs")
-	if err != nil {
-		t.Skip("server/embed-proxy.cjs is gone")
-	}
-	m := regexp.MustCompile("(?s)return `(\\(\\(\\) => \\{.*?\\}\\)\\(\\);\n)`;").FindSubmatch(source)
-	if m == nil {
-		t.Fatal("bridge template not found in embed-proxy.cjs")
-	}
-	js := strings.NewReplacer("${JSON.stringify(parentOrigins)}", `["http://127.0.0.1:1"]`, "${JSON.stringify(loginToken)}", `"tok"`).Replace(string(m[1]))
-	if got := embedBridgeScript([]string{"http://127.0.0.1:1"}, "tok"); got != js {
-		t.Fatalf("bridge differs from embed-proxy.cjs\n--- node\n%s\n--- go\n%s", js, got)
 	}
 }
 

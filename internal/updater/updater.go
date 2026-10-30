@@ -1,6 +1,5 @@
 // Package updater is the in-app updater: it checks GitHub releases for a newer zip, downloads and
 // verifies it, then hands over to a detached helper script that replaces the installation.
-// It is a port of desktop/updater.cjs and desktop/update/apply-update.{ps1,sh}.
 package updater
 
 import (
