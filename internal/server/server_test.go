@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -30,6 +31,7 @@ type fixture struct {
 	b     *Backend
 	conn  Connection
 	calls []call
+	mu    sync.Mutex
 }
 
 func out(v any, code int) Result {
@@ -47,7 +49,9 @@ func newFixture(t *testing.T, handler func(args []string, opts RunOptions) Resul
 		handler = func([]string, RunOptions) Result { return out(map[string]any{"items": []any{}}, 0) }
 	}
 	runner := func(ctx context.Context, command string, args []string, opts RunOptions) (Result, error) {
+		f.mu.Lock()
 		f.calls = append(f.calls, call{command, args, opts})
+		f.mu.Unlock()
 		return handler(args, opts), nil
 	}
 	ui := fstest.MapFS{

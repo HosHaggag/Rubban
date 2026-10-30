@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -79,22 +80,18 @@ func (p *processes) killAll() {
 type limitedBuffer struct {
 	mu       sync.Mutex
 	buf      bytes.Buffer
-	max      int
-	exceeded bool
-	shared   *int
+	max      int64
+	exceeded atomic.Bool
+	shared   *atomic.Int64 // combined size of stdout and stderr
 	onLimit  func()
 }
 
 func (l *limitedBuffer) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	*l.shared += len(p)
-	if *l.shared > l.max {
-		if !l.exceeded {
-			l.exceeded = true
-			if l.onLimit != nil {
-				go l.onLimit()
-			}
+	if l.shared.Add(int64(len(p))) > l.max {
+		if l.exceeded.CompareAndSwap(false, true) && l.onLimit != nil {
+			go l.onLimit()
 		}
 		return len(p), nil
 	}
@@ -108,14 +105,13 @@ func (b *Backend) execRunner(ctx context.Context, command string, args []string,
 	cmd.Env = opts.Env
 	cmd.Dir = opts.Dir
 	cmd.Stdin = strings.NewReader(opts.Input)
-	total := 0
-	var out, errb limitedBuffer
+	var total atomic.Int64
 	var once sync.Once
 	kill := func() { once.Do(func() { killProcess(cmd.Process) }) }
-	out = limitedBuffer{max: opts.MaxBytes, shared: &total, onLimit: kill}
-	errb = limitedBuffer{max: opts.MaxBytes, shared: &total, onLimit: kill}
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
+	out := &limitedBuffer{max: int64(opts.MaxBytes), shared: &total, onLimit: kill}
+	errb := &limitedBuffer{max: int64(opts.MaxBytes), shared: &total, onLimit: kill}
+	cmd.Stdout = out
+	cmd.Stderr = errb
 	if err := cmd.Start(); err != nil {
 		return Result{}, problem(fmt.Sprintf("Unable to start %s: %s", filepath.Base(command), err.Error()), 503)
 	}
@@ -125,7 +121,7 @@ func (b *Backend) execRunner(ctx context.Context, command string, args []string,
 	go func() { waited <- cmd.Wait() }()
 	select {
 	case err := <-waited:
-		if out.exceeded || errb.exceeded {
+		if out.exceeded.Load() || errb.exceeded.Load() {
 			return Result{}, problem("Command output exceeded the configured limit", 502)
 		}
 		code := 0
