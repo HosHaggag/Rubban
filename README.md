@@ -245,12 +245,12 @@ Packaged builds check `github.com/HosHaggag/Rubban/releases/latest/download/late
 
 ### Releasing (maintainers)
 
-Releases are built by GitHub Actions when a tag `v<version>` is pushed. The workflow refuses a tag that does not match the `VERSION` file or has no `## <version>` section in `CHANGELOG.md`, bundles the official kubectl and helm (versions in `cmd/buildtool/tool-versions.json`, checksums verified), builds the Windows and macOS zips and publishes them with `SHA256SUMS.txt`, `latest.json` and the changelog section as the release notes.
+There is one GitHub Actions workflow, **Build and release**, and it runs only when started by hand (Actions › Build and release › Run workflow, on the branch to release). Nothing runs on pushes or pull requests. The workflow reads the version from the `VERSION` file, refuses to run without a `## <version>` section in `CHANGELOG.md` or when tag `v<version>` already exists at another commit, bundles the official kubectl and helm (versions in `cmd/buildtool/tool-versions.json`, checksums verified), builds the Windows and macOS zips, smoke-tests them and publishes them as release `v<version>` with `SHA256SUMS.txt`, `latest.json` and the changelog section as the release notes. Turn **publish** off to only build: the zips are then kept as workflow artifacts.
 
 ```bash
-# 1. add "## 0.12.1: …" to CHANGELOG.md and commit it
-go run ./cmd/buildtool release patch     # bumps VERSION, commits and tags v0.12.1
-git push origin main --tags              # the Release workflow does the rest
+# 1. add "## 0.12.1: …" to CHANGELOG.md
+# 2. put 0.12.1 in VERSION (or: go run ./cmd/buildtool release patch, which also commits and tags)
+# 3. commit, push, then start "Build and release" from the Actions tab
 ```
 
 ### 5.4 Bundle kubectl and helm (optional)

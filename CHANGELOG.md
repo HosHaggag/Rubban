@@ -7,7 +7,7 @@
 - **Page settings survive restarts.** Rubban reuses the same local port on each launch (`port` in the data folder), so column widths, the dock height and log options that the page keeps in the browser are no longer lost between runs.
 - **One program for everything.** `rubban web` serves the interface for a browser (was `npm run web`); `rubban mcp` is the MCP bridge (was `node services/mcp.cjs`, launched through `ELECTRON_RUN_AS_NODE`). On Windows these run from `rubban-cli.exe` next to `Rubban.exe`; on macOS from the binary inside `Rubban.app`.
 - **Saving files.** Downloading a log or a service-account kubeconfig opens the system Save dialog.
-- **Building.** Only Go 1.26 is needed: `go run ./cmd/buildtool package`. Node.js is used for the UI unit tests and ESLint only. Releases are versioned by the `VERSION` file.
+- **Building.** Only Go 1.26 is needed: `go run ./cmd/buildtool package`. Node.js is used for the UI unit tests and ESLint only. Releases are versioned by the `VERSION` file and built by the one GitHub Actions workflow, **Build and release**, which runs only when started by hand; nothing runs on pushes or pull requests.
 - Fixed on the way: a kubeconfig import whose cluster or user names clash with an existing file is refused (kubectl would have silently used the wrong cluster and credentials); importing works when kubectl is not installed; a failed update check no longer hides a downloaded, verified update; update progress no longer floods the page; **Help › Check for updates…** reports the real outcome; the Light/Dark choice applies before the window appears.
 
 ## 0.11.1: Console tunnels recover on their own
