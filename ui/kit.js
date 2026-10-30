@@ -100,6 +100,13 @@ export function popupMenu(anchor, items) {
     if (item.checkbox) { menu.append(el('label', { class: 'menu-item check' }, el('input', { type: 'checkbox', checked: item.checked, onchange: event => item.onChange(event.target.checked) }), item.label)); continue; }
     menu.append(el('button', { type: 'button', class: `menu-item${item.danger ? ' danger' : ''}`, role: 'menuitem', disabled: item.disabled, title: item.title || '', onclick: event => { event.stopPropagation(); closeMenus(); item.action(); } }, el('span', { class: 'menu-icon', text: item.icon || '' }), item.label));
   }
+  return popup(anchor, menu);
+}
+// Shows any node as a fixed popup next to an anchor (on the body, so panel overflow never clips
+// it); closes on outside click, Escape or window blur like the menus.
+export function popup(anchor, menu) {
+  closeMenus();
+  menu.classList.add('popup-menu');
   menu.addEventListener('mousedown', event => event.stopPropagation());
   document.body.append(menu); openMenu = menu;
   const rect = anchor.getBoundingClientRect(); const size = menu.getBoundingClientRect();

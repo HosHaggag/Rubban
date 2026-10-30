@@ -1,5 +1,5 @@
 // Cluster switcher, hotbar, Clusters page and kubeconfig import.
-import { $, state, hooks, el, button, badge, info, toast, task, api, get, post, page, panel } from './kit.js';
+import { $, state, hooks, el, button, badge, info, toast, task, api, get, post, page, panel, popup, closeMenus } from './kit.js';
 import { clusterInfo, CLUSTER_COLORS, CLUSTER_ENVS } from './clusters.js';
 import { clusterIcon, CLUSTER_ICON_IDS } from './cluster-icons.js';
 
@@ -145,7 +145,8 @@ export async function clustersPage() {
     const rows = state.contexts.map(context => {
       const meta = infoFor(context.name); const saved = clusters()[context.name] || {};
       const label = el('input', { value: saved.label || '', placeholder: context.name, 'aria-label': `Label for ${context.name}`, onchange: task(event => saveCluster(context.name, { label: event.target.value.trim() })) });
-      const pick = el('details', { class: 'icon-picker' }, el('summary', { title: 'Choose an icon' }, iconBox(context.name)), el('div', { class: 'icon-grid' }, CLUSTER_ICON_IDS.map(id => el('button', { type: 'button', class: id === meta.icon ? 'selected' : '', title: id, 'aria-label': id, onclick: task(async () => { await saveCluster(context.name, { icon: id }); draw(); }) }, clusterIcon(id)))));
+      const pick = el('button', { type: 'button', class: 'icon-picker', title: 'Choose an icon', 'aria-label': `Icon for ${context.name}`, 'aria-haspopup': 'true' }, iconBox(context.name));
+      pick.onclick = () => popup(pick, el('div', { class: 'icon-grid', role: 'group', 'aria-label': 'Icons' }, CLUSTER_ICON_IDS.map(id => el('button', { type: 'button', class: id === meta.icon ? 'selected' : '', title: id, 'aria-label': id, onclick: task(async () => { closeMenus(); await saveCluster(context.name, { icon: id }); draw(); }) }, clusterIcon(id)))));
       const colors = el('div', { class: 'color-swatches' }, CLUSTER_COLORS.map(color => el('button', { type: 'button', class: `swatch-button${color === meta.color ? ' selected' : ''}`, style: `background:${color}`, title: color, 'aria-label': `Colour ${color}`, onclick: task(async () => { await saveCluster(context.name, { color }); draw(); }) })),
         el('input', { type: 'color', value: meta.color, 'aria-label': `Custom colour for ${context.name}`, onchange: task(async event => { await saveCluster(context.name, { color: event.target.value }); draw(); }) }));
       const env = el('select', { 'aria-label': `Environment of ${context.name}`, onchange: task(async event => { await saveCluster(context.name, { env: event.target.value }); draw(); }) }, el('option', { value: '', text: meta.env && !saved.env ? `${meta.env} (guessed)` : 'Not set' }), CLUSTER_ENVS.map(value => el('option', { value, text: value, selected: saved.env === value ? 'selected' : undefined })));

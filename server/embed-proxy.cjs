@@ -89,10 +89,18 @@ function injectBridge(html) {
   return `${tag}${html}`;
 }
 
-function createEmbedProxy({ targetPort, parentOrigins, upstreamTLS = false, maxHTMLBytes = 2 * 1024 * 1024, credentials }) {
+// `target` is the upstream port, or a function returning it (a promise is fine) that is asked on
+// every request: the console's port forward can die and be restarted underneath the proxy, whose
+// own port — the iframe's origin — never changes. `log` receives one line per failed request.
+function createEmbedProxy({ targetPort, target = targetPort, parentOrigins, upstreamTLS = false, maxHTMLBytes = 2 * 1024 * 1024, credentials, log }) {
   let port = 0;
   const loginToken = credentials ? crypto.randomBytes(32).toString('hex') : '';
   const sockets = new Set();
+  const resolveTarget = typeof target === 'function' ? target : async () => target;
+  // Connections to the tunnel are kept alive: every new one is a new stream in kubectl's port
+  // forward, and creating streams is what times out when the API server connection is flaky.
+  // An HTTPS console's certificate names the cluster service, not 127.0.0.1, so it is not verified.
+  const agent = upstreamTLS ? new https.Agent({ keepAlive: true, maxSockets: 6, rejectUnauthorized: false }) : new http.Agent({ keepAlive: true, maxSockets: 6 });
   const server = http.createServer(async (req, res) => {
     const host = String(req.headers.host || '').toLowerCase();
     if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
@@ -120,34 +128,46 @@ function createEmbedProxy({ targetPort, parentOrigins, upstreamTLS = false, maxH
       res.end(body); return;
     }
     const headers = { ...req.headers, 'accept-encoding': 'identity' };
-    // An HTTPS console is reached through the kubectl tunnel; its certificate names the cluster
-    // service, not 127.0.0.1, so it is not verified here.
-    const upstream = (upstreamTLS ? https : http).request({ host: '127.0.0.1', port: targetPort, method: req.method, path: req.url, headers, ...(upstreamTLS ? { rejectUnauthorized: false } : {}) }, response => {
-      const type = String(response.headers['content-type'] || '');
-      const outHeaders = frameHeaders(response.headers, parentOrigins);
-      if (!/^text\/html/i.test(type) || req.method === 'HEAD' || response.statusCode === 304) {
-        res.writeHead(response.statusCode, outHeaders);
-        response.pipe(res);
-        return;
-      }
-      const chunks = []; let size = 0; let tooLarge = false;
-      response.on('data', chunk => { size += chunk.length; if (size > maxHTMLBytes) tooLarge = true; else chunks.push(chunk); });
-      response.on('end', () => {
-        if (tooLarge) { res.writeHead(502, { 'Content-Type': 'text/plain' }); res.end('Console page is too large to embed'); return; }
-        const body = injectBridge(Buffer.concat(chunks).toString('utf8'));
-        delete outHeaders['content-length']; delete outHeaders['transfer-encoding']; delete outHeaders.etag;
-        outHeaders['content-length'] = Buffer.byteLength(body);
-        outHeaders['cache-control'] = 'no-store';
-        res.writeHead(response.statusCode, outHeaders);
-        res.end(body);
-      });
-      response.on('error', () => res.destroy());
-    });
-    upstream.on('error', error => {
+    const idempotent = req.method === 'GET' || req.method === 'HEAD';
+    const fail = error => {
+      log?.(`Console request ${req.method} ${req.url} failed: ${error.message}`);
       if (res.headersSent) { res.destroy(); return; }
       res.writeHead(502, { 'Content-Type': 'text/plain' }); res.end(`The port forward is not answering: ${error.message}`);
-    });
-    req.pipe(upstream);
+    };
+    const send = async attempt => {
+      let upstreamPort;
+      try { upstreamPort = await resolveTarget(); } catch (error) { fail(error); return; }
+      const upstream = (upstreamTLS ? https : http).request({ host: '127.0.0.1', port: upstreamPort, method: req.method, path: req.url, headers, agent }, response => {
+        const type = String(response.headers['content-type'] || '');
+        const outHeaders = frameHeaders(response.headers, parentOrigins);
+        if (!/^text\/html/i.test(type) || req.method === 'HEAD' || response.statusCode === 304) {
+          res.writeHead(response.statusCode, outHeaders);
+          response.pipe(res);
+          return;
+        }
+        const chunks = []; let size = 0; let tooLarge = false;
+        response.on('data', chunk => { size += chunk.length; if (size > maxHTMLBytes) tooLarge = true; else chunks.push(chunk); });
+        response.on('end', () => {
+          if (tooLarge) { res.writeHead(502, { 'Content-Type': 'text/plain' }); res.end('Console page is too large to embed'); return; }
+          const body = injectBridge(Buffer.concat(chunks).toString('utf8'));
+          delete outHeaders['content-length']; delete outHeaders['transfer-encoding']; delete outHeaders.etag;
+          outHeaders['content-length'] = Buffer.byteLength(body);
+          outHeaders['cache-control'] = 'no-store';
+          res.writeHead(response.statusCode, outHeaders);
+          res.end(body);
+        });
+        response.on('error', () => res.destroy());
+      });
+      upstream.on('error', error => {
+        // No answer at all: a kept-alive socket the console closed just now, or a forward that
+        // died. A request without a body is sent once more, over a fresh connection to whatever
+        // `target` names by then.
+        if (idempotent && attempt === 0 && !res.headersSent) { send(1); return; }
+        fail(error);
+      });
+      if (idempotent) upstream.end(); else req.pipe(upstream);
+    };
+    send(0);
   });
   server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
   return new Promise((resolve, reject) => {
@@ -156,7 +176,7 @@ function createEmbedProxy({ targetPort, parentOrigins, upstreamTLS = false, maxH
       port = server.address().port;
       resolve({
         port,
-        close: () => new Promise(done => { for (const socket of sockets) socket.destroy(); server.close(() => done()); }),
+        close: () => new Promise(done => { agent.destroy(); for (const socket of sockets) socket.destroy(); server.close(() => done()); }),
       });
     });
   });

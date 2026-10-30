@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1: Console tunnels recover on their own
+
+- **RabbitMQ console stays up.** When `kubectl port-forward` gives up ("lost connection to pod", which happens when the API server stalls on a new tunnel stream), Rubban now restarts it behind the same embedded console on the next request and answers that request once the tunnel is back, instead of leaving the console with "could not connect to server" until you pressed Reconnect. Requests without a body are retried once over a fresh connection; the dead forward disappears from Port Forwarding when its replacement starts.
+- Clusters page: the icon picker opens as a floating popup, so it is no longer cut off on the last row.
+
 ## 0.11.0: Light theme, cluster switcher, cleanup
 
 - **Light theme.** Settings › Appearance offers System (the default), Light and Dark. System follows the Windows or macOS setting live; the terminal and window background follow too.

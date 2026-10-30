@@ -118,3 +118,32 @@ test('embed proxy: frame headers, injected bridge, raw paths and Host checks', a
   const rebinding = await new Promise(resolve => http.get({ host: '127.0.0.1', port: proxy.port, path: '/', headers: { Host: `attacker.example:${proxy.port}` } }, res => resolve(res.statusCode)));
   assert.equal(rebinding, 403);
 });
+
+test('embed proxy follows a restarted upstream: a GET is retried once over a fresh connection, a POST is not', async t => {
+  const serve = () => new Promise(resolve => { const server = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ port: server.address().port, method: req.method })); }); server.listen(0, '127.0.0.1', () => resolve(server)); });
+  let upstream = await serve();
+  const answers = [];
+  const lookups = [];
+  const proxy = await createEmbedProxy({ target: async () => { const port = answers.length ? answers.shift() : upstream.address().port; lookups.push(port); return port; }, parentOrigins: ['http://127.0.0.1:4000'] });
+  t.after(async () => { await proxy.close(); upstream.close(); });
+  const base = `http://127.0.0.1:${proxy.port}`;
+  const live = upstream.address().port;
+  assert.equal((await (await fetch(`${base}/api/overview`)).json()).port, live);
+
+  // The tunnel dies and comes back on another port. The first lookup still names the dead port
+  // (nobody has noticed yet); the retry's lookup gets the new one.
+  await new Promise(resolve => upstream.close(resolve));
+  upstream = await serve();
+  answers.push(live);
+  const recovered = await fetch(`${base}/api/overview`);
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).port, upstream.address().port);
+  assert.deepEqual(lookups, [live, live, upstream.address().port]);
+
+  // A request with a body cannot be replayed: it fails honestly.
+  answers.push(live);
+  const posted = await fetch(`${base}/api/queues/%2F/x`, { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } });
+  assert.equal(posted.status, 502);
+  assert.match(await posted.text(), /port forward is not answering/);
+  assert.equal((await (await fetch(`${base}/api/overview`)).json()).port, upstream.address().port);
+});

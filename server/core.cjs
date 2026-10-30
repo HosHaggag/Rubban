@@ -590,13 +590,20 @@ function createBackend(options = {}) {
 
   function forwardView(forward) {
     const { child: _child, ...publicFields } = forward;
-    const embed = embeds.get(forward.id);
-    return embed ? { ...publicFields, embedPort: embed.port } : publicFields;
+    const entry = [...consoles.values()].find(item => item.forward.id === forward.id);
+    return entry ? { ...publicFields, embedPort: entry.embed.port } : publicFields;
   }
-  // Embed proxies (see embed-proxy.cjs) live as long as the forward they front.
-  const embeds = new Map();
-  function closeEmbed(id) { const embed = embeds.get(id); embeds.delete(id); return embed ? embed.close() : Promise.resolve(); }
-  async function openEmbeddedForward({ context, namespace, resource, name, remotePort, scheme, signal, credentials }) {
+  // Embedded consoles (see embed-proxy.cjs), one per forwarded service. The proxy keeps its port
+  // — the iframe's origin — for as long as the console is open; the kubectl port forward behind
+  // it is restarted on the next request when it dies (kubectl exits with "lost connection to pod"
+  // when the API server stalls), so the page keeps working instead of needing a reconnect.
+  const consoles = new Map();
+  const consoleKey = ({ context, namespace, resource, name, remotePort }) => JSON.stringify([context, namespace, resource, name, remotePort]);
+  async function closeConsoleOf(forwardId) {
+    for (const [key, entry] of consoles) if (entry.forward.id === forwardId) { consoles.delete(key); await entry.embed.close(); }
+  }
+  // A ready forward for the console: an existing live one, or a new kubectl started now.
+  async function readyForward({ context, namespace, resource, name, remotePort }, signal) {
     let forward = [...forwards.values()].find(item => item.context === context && item.namespace === namespace && item.resource === resource && item.name === name && item.remotePort === remotePort && ['starting', 'ready'].includes(item.status));
     if (!forward) forward = forwards.get(createForward({ context, namespace, resource, name, remotePort, localPort: 0 }).id);
     const deadline = Date.now() + 25000;
@@ -607,13 +614,35 @@ function createBackend(options = {}) {
       forward.status = 'stopped'; killProcess(forward.child); forwards.delete(forward.id);
       throw problem(`The port forward to ${resource}/${name}:${remotePort} did not start${reason}`, 502);
     }
-    let embed = embeds.get(forward.id);
-    if (!embed) {
-      embed = await createEmbedProxy({ targetPort: forward.localPort, parentOrigins: [`http://127.0.0.1:${listeningPort}`, `http://localhost:${listeningPort}`], upstreamTLS: scheme === 'https', credentials });
-      if (forward.status !== 'ready') { await embed.close(); throw problem('The port forward stopped while the console was opening', 502); }
-      embeds.set(forward.id, embed);
-      forward.child.once('close', () => closeEmbed(forward.id));
-    }
+    return forward;
+  }
+  async function openEmbeddedForward({ context, namespace, resource, name, remotePort, scheme, signal, credentials }) {
+    const spec = { context, namespace, resource, name, remotePort };
+    const key = consoleKey(spec);
+    let entry = consoles.get(key);
+    if (!entry) {
+      const forward = await readyForward(spec, signal);
+      entry = consoles.get(key);
+      if (!entry) {
+        entry = { forward, restarting: null };
+        // Asked by the proxy on every request: the live forward's port, or a restarted one. One
+        // restart serves every request that arrives while it is in progress.
+        entry.target = () => {
+          if (entry.forward.status === 'ready') return Promise.resolve(entry.forward.localPort);
+          if (!entry.restarting) {
+            entry.restarting = readyForward(spec).then(next => {
+              if (next !== entry.forward) forwards.delete(entry.forward.id); // the dead one leaves Port Forwarding
+              entry.forward = next;
+              return next.localPort;
+            }).finally(() => { entry.restarting = null; });
+          }
+          return entry.restarting;
+        };
+        entry.embed = await createEmbedProxy({ target: entry.target, parentOrigins: [`http://127.0.0.1:${listeningPort}`, `http://localhost:${listeningPort}`], upstreamTLS: scheme === 'https', credentials, log: message => options.logger?.warn?.(message) });
+        consoles.set(key, entry);
+      }
+    } else if (entry.forward.status !== 'ready') await entry.target();
+    const { forward, embed } = entry;
     return { forwardId: forward.id, localPort: forward.localPort, url: `http://127.0.0.1:${embed.port}/`, origin: `http://127.0.0.1:${embed.port}` };
   }
   async function listObjects(context, resource, namespace, { signal, labelSelector, fieldSelector } = {}) {
@@ -861,7 +890,7 @@ function createBackend(options = {}) {
           : new Promise(resolve => { const timer = setTimeout(resolve, 3000); forward.child.once('close', () => { clearTimeout(timer); resolve(); }); });
         killProcess(forward.child);
         forwards.delete(id);
-        await closeEmbed(id);
+        await closeConsoleOf(id);
         // Answer after kubectl has released the local port, so a restart can reuse it.
         await exited;
         sendJSON(res, { ok: true });
@@ -1159,7 +1188,8 @@ function createBackend(options = {}) {
     for (const child of processes) killProcess(child);
     processes.clear();
     forwards.clear();
-    await Promise.all([...embeds.keys()].map(closeEmbed));
+    await Promise.all([...consoles.values()].map(entry => entry.embed.close()));
+    consoles.clear();
     for (const file of terminalKubeconfigs) { try { fs.rmSync(file, { force: true }); } catch { /* Best effort. */ } }
     terminalKubeconfigs.clear();
     wsServer.close();

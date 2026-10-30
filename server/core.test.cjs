@@ -628,3 +628,50 @@ test('cluster display preferences are validated', async t => {
     assert.equal((await f.request('/api/preferences', 'PUT', { clusters: { dev: bad } })).status, 400);
   }
 });
+
+test('an embedded console outlives its port forward: the next request restarts kubectl behind the same proxy', async t => {
+  const services = { items: [{ metadata: { name: 'orders', namespace: 'mq' }, spec: { selector: { app: 'orders' }, ports: [{ name: 'management', port: 15672 }] } }] };
+  const mqPod = { metadata: { name: 'orders-0', namespace: 'mq', labels: { app: 'orders' } }, spec: { containers: [{ name: 'rabbitmq', image: 'rabbitmq:4.1-management' }] }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }] } };
+  const f = await fixture(t, (command, args) => {
+    if (args[0] === 'get' && args[1] === 'services') return output(services);
+    if (args[0] === 'get' && args[1] === 'pods') return output({ items: [mqPod] });
+    return output({ items: [] });
+  });
+  // Stands in for the management console at the forward's local port.
+  let hits = 0;
+  const mgmt = http.createServer((req, res) => { hits++; res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); });
+  await new Promise(resolve => mgmt.listen(0, '127.0.0.1', resolve));
+  t.after(() => mgmt.close());
+  const ready = child => child.stdout.write(`Forwarding from 127.0.0.1:${mgmt.address().port} -> 15672\n`);
+
+  const opening = f.request('/api/rabbitmq/open', 'POST', { context: 'dev', namespace: 'mq', service: 'orders' });
+  await waitFor(() => f.children.length === 1, 'kubectl port-forward started');
+  ready(f.children[0].child);
+  const opened = await opening;
+  assert.equal(opened.status, 200);
+  assert.equal((await fetch(`${opened.value.url}api/overview`)).status, 200);
+  assert.equal(hits, 1);
+
+  // kubectl gives up ("lost connection to pod"). The console's next poll restarts the forward and
+  // is answered once it is ready; the proxy's port, the iframe's origin, is unchanged.
+  f.children[0].child.stderr.write('error: lost connection to pod\n');
+  f.children[0].child.emit('close', 1);
+  const poll = fetch(`${opened.value.url}api/overview`);
+  await waitFor(() => f.children.length === 2, 'kubectl port-forward restarted');
+  assert.deepEqual(f.children[1].args.slice(-3), ['services/orders', ':15672', '--address=127.0.0.1']);
+  ready(f.children[1].child);
+  assert.equal((await poll).status, 200);
+  assert.equal(hits, 2);
+  const forwards = (await f.request('/api/forwards')).value.items;
+  assert.equal(forwards.length, 1);
+  assert.equal(forwards[0].status, 'ready');
+  assert.equal(`http://127.0.0.1:${forwards[0].embedPort}/`, opened.value.url);
+  // Opening the console again reuses the proxy and the restarted forward.
+  const reopened = await f.request('/api/rabbitmq/open', 'POST', { context: 'dev', namespace: 'mq', service: 'orders' });
+  assert.equal(reopened.value.url, opened.value.url);
+  assert.equal(reopened.value.forwardId, forwards[0].id);
+
+  // Stopping the forward from Port Forwarding closes the console with it.
+  assert.equal((await f.request(`/api/forwards/${forwards[0].id}`, 'DELETE')).status, 200);
+  await assert.rejects(fetch(`${opened.value.url}api/overview`));
+});

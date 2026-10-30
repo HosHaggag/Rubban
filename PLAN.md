@@ -1,5 +1,7 @@
 # Rubban 1.0 plan — remaining work
 
+> 2026-10-31: the application is being ported to Go + Wails; see `PLAN-GO.md`. Backend and desktop items below (A3–A5, A10, A14, A20, A22, A23, A25–A27) are done as part of that port; the UI items remain valid as written.
+
 Status on 2026-10-30 (git history rewritten the same day: `main` now starts at the cleaned 0.11.0 tree, no earlier names anywhere): all six workstreams of the original plan (cleanup, old-name removal, light theme, cluster switcher with kubeconfig import, onboarding tour, CI + GitHub Releases, in-app updater) are implemented in the tree and verified: `npm ci`, `npm run lint` (0 errors) and `npm test` (92 passed, 0 failed, 2 platform skips) on Windows from a fresh install; each section's design and acceptance list was checked against the code line by line. The completed sections have been removed from this file. What follows is the residue: small gaps found during that verification, decisions the owner must make, and the Windows notes for whoever works on the repository next.
 
 Project rules still apply: no animations or transitions; no confirmation dialogs except the production guard; secret values never in list/watch payloads; kubectl and helm run without a shell with validated arguments; the renderer cannot reach the internet (anything that talks to GitHub lives in `desktop/` or `server/`); tests are plain `node --test` in the existing style.
