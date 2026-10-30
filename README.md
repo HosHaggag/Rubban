@@ -239,6 +239,20 @@ To copy the zips from WSL to your Windows Downloads folder:
 cp release/*.zip /mnt/c/Users/$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r')/Downloads/
 ```
 
+### Updates
+
+Packaged builds check `github.com/HosHaggag/Rubban/releases/latest/download/latest.json` shortly after start and every six hours (Settings › Updates, or **Help › Check for updates…**). The app downloads only from GitHub over HTTPS, verifies the SHA-256 from `latest.json`, and installs through a small helper (`desktop/update/apply-update.ps1` on Windows, `apply-update.sh` on macOS) that runs after Rubban exits, so no installer window or browser download is involved. The helper restores the previous version if the install fails. Releases are not code-signed yet, so the checksum is the integrity check.
+
+### Releasing (maintainers)
+
+Releases are built by GitHub Actions when a tag `v<version>` is pushed. The workflow refuses a tag that does not match `package.json` or has no `## <version>` section in `CHANGELOG.md`, bundles the official kubectl and helm (versions in `scripts/tool-versions.json`, checksums verified), builds the Windows and macOS zips and publishes them with `SHA256SUMS.txt`, `latest.json` and the changelog section as the release notes.
+
+```bash
+# 1. add "## 0.11.1: …" to CHANGELOG.md and commit it
+node scripts/release.cjs patch     # bumps package.json, commits and tags v0.11.1
+git push origin main --tags        # the Release workflow does the rest
+```
+
 ### 5.4 Bundle kubectl and helm (optional)
 
 Point the build at binaries for the *target* platform. They are copied into `resources/app/tools`, with their SHA-256 checksums recorded in `tool-provenance.json`.
@@ -257,6 +271,7 @@ Rubban uses bundled tools first and falls back to the ones on PATH.
 | `RUBBAN_DATA_DIR` | Folder for settings and session files |
 | `RUBBAN_SKIP_SHELL_ENV=1` | macOS/Linux: do not read the login shell's environment at start-up |
 | `RUBBAN_DISABLE_PTY=1` | Use the simple pipe terminal instead of a native pseudo-terminal |
+| `RUBBAN_DISABLE_UPDATES=1` | Turn off the update check and installer |
 | `RUBBAN_RELEASE_DIR` | Where `package:*` writes the release zips (default `release/`) |
 | `KUBECONFIG` | Standard kubeconfig search path, honoured as usual |
 
@@ -297,9 +312,10 @@ This folder holds:
 - `preferences.json`: settings, pinned clusters and Prometheus choices;
 - the window profile;
 - `connection.json`: the local API address and token, written while Rubban runs, for the MCP bridge;
+- `kubeconfigs/`: private copies of kubeconfigs you imported (mode 0600), one file each plus `index.json`;
 - `logs/rubban.log`: errors and start-up problems as JSON lines (rotated at 5 MB, three old files kept). Open it from **Help › Open log folder**.
 
-Rubban never writes to your kubeconfig. Deleting the folder resets Rubban.
+Rubban never writes to your own kubeconfig; imported kubeconfigs are separate copies that Rubban merges into the `KUBECONFIG` of the kubectl and helm processes it starts. Deleting the folder resets Rubban.
 
 ---
 

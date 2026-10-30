@@ -8,14 +8,14 @@ const done = message => result => { toast((result?.output || '').split('\n').fil
 const closeDrawerFor = selected => { if (state.selected?.name === selected.name && state.selected?.resource === selected.resource) { state.selected = null; $('#drawer').classList.add('hidden'); } };
 
 export async function deleteResource(selected) {
-  if (!await confirmAction(`Delete ${kindOf(selected.resource) || selected.resource} “${selected.name}” from the cluster. This may interrupt running workloads or remove data.`, selected.name)) return;
+  if (!await confirmAction(`Delete ${kindOf(selected.resource) || selected.resource} “${selected.name}” from the cluster. This may interrupt running workloads or remove data.`, selected.name, { destructive: true })) return;
   const result = await post('/api/delete', targetOf(selected));
   toast(result.output || 'Resource deleted.');
   closeDrawerFor(selected); hooks.afterMutation?.();
 }
 export async function deleteMany(resource, items, clear) {
   const target = `${items.length} ${items.length === 1 ? 'resource' : 'resources'}`;
-  if (!await confirmAction(`Delete ${target} (${items.slice(0, 5).map(i => i.metadata?.name).join(', ')}${items.length > 5 ? ', …' : ''}). This cannot be undone.`, target)) return;
+  if (!await confirmAction(`Delete ${target} (${items.slice(0, 5).map(i => i.metadata?.name).join(', ')}${items.length > 5 ? ', …' : ''}). This cannot be undone.`, target, { destructive: true })) return;
   let failed = 0;
   for (const item of items) {
     try { await post('/api/delete', targetOf(selectionFor(item, resource))); } catch (error) { failed++; toast(`${item.metadata?.name}: ${error.message}`, true); }
@@ -26,7 +26,7 @@ export async function deleteMany(resource, items, clear) {
 export function scaleDialog(selected) {
   const current = selected.item.spec?.replicas ?? 1;
   const slider = el('input', { type: 'range', min: 0, max: Math.max(10, current * 2), value: current, 'aria-label': 'Replicas' });
-  const form = makeForm([{ name: 'replicas', label: 'Desired replicas', type: 'number', value: current, min: 0, max: 100000, required: true, help: `Currently ${selected.item.status?.readyReplicas ?? selected.item.status?.replicas ?? 0} ready of ${current} desired.` }], 'Scale', values => post('/api/scale', { ...targetOf(selected), replicas: Number(values.replicas) }), { confirm: 'Change the desired number of replicas for this workload.', target: selected.name, after: done('Scaled.') });
+  const form = makeForm([{ name: 'replicas', label: 'Desired replicas', type: 'number', value: current, min: 0, max: 100000, required: true, help: `Currently ${selected.item.status?.readyReplicas ?? selected.item.status?.replicas ?? 0} ready of ${current} desired.` }], 'Scale', values => post('/api/scale', { ...targetOf(selected), replicas: Number(values.replicas) }), { destructive: values => Number(values.replicas) === 0, confirm: 'Change the desired number of replicas for this workload.', target: selected.name, after: done('Scaled.') });
   const input = form.querySelector('input[name="replicas"]');
   slider.addEventListener('input', () => { input.value = slider.value; });
   input.addEventListener('input', () => { slider.value = input.value; });
@@ -72,7 +72,7 @@ export async function restart(selected) {
   done('Restart requested.')(await post('/api/restart', targetOf(selected)));
 }
 export async function evict(selected) {
-  if (!await confirmAction('Evict this pod through the Eviction API. Pod disruption budgets are respected; its controller will usually recreate it elsewhere.', selected.name)) return;
+  if (!await confirmAction('Evict this pod through the Eviction API. Pod disruption budgets are respected; its controller will usually recreate it elsewhere.', selected.name, { destructive: true })) return;
   done('Pod evicted.')(await post('/api/evict', targetOf(selected)));
 }
 export async function cordon(selected, on) {
@@ -86,7 +86,7 @@ export function drainDialog(selected) {
     { name: 'force', label: 'Unmanaged pods', options: [{ value: 'false', label: 'Fail if present' }, { value: 'true', label: 'Force delete them' }] },
     { name: 'gracePeriodSeconds', label: 'Grace period (seconds)', type: 'number', min: -1, max: 3600, placeholder: 'Pod default' },
     { name: 'timeoutSeconds', label: 'Timeout (seconds)', type: 'number', min: 10, max: 3600, value: 300, required: true },
-  ], 'Drain node', values => post('/api/node', { context: selected.context, name: selected.name, action: 'drain', ignoreDaemonsets: values.ignoreDaemonsets === 'true', deleteEmptyDirData: values.deleteEmptyDirData === 'true', force: values.force === 'true', gracePeriodSeconds: values.gracePeriodSeconds, timeoutSeconds: Number(values.timeoutSeconds) }), { danger: true, confirm: 'Drain this node and evict its pods.', target: selected.name, after: done('Node drained.') })));
+  ], 'Drain node', values => post('/api/node', { context: selected.context, name: selected.name, action: 'drain', ignoreDaemonsets: values.ignoreDaemonsets === 'true', deleteEmptyDirData: values.deleteEmptyDirData === 'true', force: values.force === 'true', gracePeriodSeconds: values.gracePeriodSeconds, timeoutSeconds: Number(values.timeoutSeconds) }), { danger: true, destructive: true, confirm: 'Drain this node and evict its pods.', target: selected.name, after: done('Node drained.') })));
 }
 export async function cronJobAction(selected, action) {
   const text = { trigger: 'Create a Job from this CronJob now, outside its schedule.', suspend: 'Suspend this CronJob. No new Jobs will be scheduled until it is resumed.', resume: 'Resume this CronJob so it schedules Jobs again.' }[action];

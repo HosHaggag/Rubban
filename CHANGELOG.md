@@ -1,7 +1,14 @@
 # Changelog
 
-## 0.11.0: Cleanup
+## 0.11.0: Light theme, cluster switcher, cleanup
 
+- **Light theme.** Settings › Appearance offers System (the default), Light and Dark. System follows the Windows or macOS setting live; the terminal and window background follow too.
+- **Cluster switcher.** The cluster selector is now a searchable popover (Ctrl+Shift+K) with pinned clusters, icons, colours and environment tags. The new **Clusters** page lets you rename a cluster, pick an icon and colour, tag it production, staging or development, and pin it. Pinned clusters in the hotbar can be reordered by dragging.
+- **Import a kubeconfig.** Paste a kubeconfig or import a file from the Clusters page or the welcome page. Rubban keeps a private copy in its data folder and merges it through `KUBECONFIG` for the processes it starts; your own kubeconfig is never changed. Remove an import at any time.
+- **Onboarding tour.** First launch walks through the main parts of the window in about ten steps. Skip it any time; restart it from Settings › Help or the command palette (“Take the tour”).
+- **In-app updates.** Rubban checks GitHub Releases at start and every six hours. An update icon appears in the sidebar when a new version exists; **Download** fetches and verifies it (SHA-256), **Install and restart** swaps the app in place and relaunches it. If anything goes wrong the previous version is put back. Turn automatic checks off in Settings › Updates, or set `RUBBAN_DISABLE_UPDATES=1`. **Help › Check for updates…** checks on demand.
+- **Releases from CI.** Pushing a `v<version>` tag builds the Windows and macOS zips on GitHub Actions with the official kubectl and helm bundled and checksum-verified, and publishes them with `SHA256SUMS.txt` and `latest.json`. CI runs lint and tests on Linux, Windows and macOS for every pull request.
+- **Production guard.** On a cluster tagged production, destructive actions (delete, bulk delete, evict, drain, scale to zero, Helm uninstall, Argo CD delete) ask you to type the resource name once. Nothing else asks for confirmation.
 - Removed the unused Team hub, cluster agent, Extensions, Cloud import, OpenCost, GitOps overview and Flux endpoints and the services behind them. The AI assistant, Prometheus queries and the MCP bridge stay.
 - Removed the compatibility code for earlier product names (environment variables, data folders, the old token header and installer clean-up).
 - Errors are written to `logs/rubban.log` in the data folder (rotated at 5 MB, three old files kept). **Help › Open log folder** opens it.

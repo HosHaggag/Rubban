@@ -14,8 +14,7 @@
     <aside class="sidebar">
       <div class="brand"><img class="brand-mark" src="/rubban.svg" alt=""><span class="brand-en">Rubban</span><span class="brand-ar" lang="ar" dir="rtl">رُبّان</span></div>
       <div class="context-control">
-        <span class="context-icon" data-icon="cluster"></span>
-        <div class="context-text"><label for="context">Cluster</label><select id="context"><option value="">Select a cluster…</option></select></div>
+        <button type="button" id="context-switcher" class="context-switcher" aria-haspopup="dialog"></button>
         <span class="connection-dot" id="connection-dot" title="Connection state"></span>
       </div>
       <div class="context-meta"><span id="context-caption">Choose a kubeconfig context</span><button id="pin-context" class="pin-button" title="Pin selected context" aria-label="Pin selected context">☆</button></div>
@@ -28,6 +27,7 @@
           <button class="rail-button active" id="workspace-button" data-icon="workspace" title="Cluster workspace" aria-label="Cluster workspace"></button>
           <button class="rail-button" data-section="metrics" data-icon="metrics" title="Metrics &amp; monitoring" aria-label="Metrics and monitoring"></button>
           <button class="rail-button" data-section="ai" data-icon="ai" title="AI assistant" aria-label="AI assistant"></button>
+          <button class="rail-button hidden" id="update-button" type="button" title="Update available" aria-label="Update available"></button>
           <button class="rail-button" data-section="settings" data-icon="settings" title="Settings" aria-label="Settings"></button>
         </div>
       </div>
@@ -50,6 +50,7 @@
     </section>
   </div>
   <aside id="drawer" class="drawer hidden" aria-label="Resource details"><div class="drawer-header"><button class="icon-button hidden" id="drawer-back" title="Back" aria-label="Back to previous resource">←</button><div class="drawer-title"><span class="eyebrow" id="drawer-kind">RESOURCE</span><h2 id="drawer-name"></h2></div><button class="icon-button" id="drawer-close" aria-label="Close resource details">×</button></div><div id="drawer-content"></div></aside>
+  <dialog id="switcher-dialog" class="command-dialog switcher"><form method="dialog"><div class="command-input"><span class="search-icon" data-icon="search"></span><input id="switcher-search" autocomplete="off" placeholder="Switch cluster…" aria-label="Search clusters"><button class="quiet compact">Esc</button></div></form><div id="switcher-list" class="switcher-list" role="listbox"></div><div class="command-footer"><button type="button" id="switcher-manage" class="quiet compact">Manage clusters…</button><kbd>↑↓</kbd> <kbd>Enter</kbd></div></dialog>
   <dialog id="command-dialog" class="command-dialog"><form method="dialog"><div class="command-input"><span class="search-icon" data-icon="search"></span><input id="command-search" autocomplete="off" placeholder="Go to a view or resource…" aria-label="Search commands"><button class="quiet compact">Esc</button></div></form><div id="command-results"></div><div class="command-footer">Navigate your workspace <kbd>Enter</kbd> to open</div></dialog>
   <dialog id="action-dialog" class="action-dialog"><div id="action-content"></div></dialog>
   <div id="toast-region" aria-live="polite"></div>

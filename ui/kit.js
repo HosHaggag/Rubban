@@ -493,12 +493,27 @@ export function field(spec) {
 export function makeForm(specs, submitLabel, submit, extra = {}) {
   const form = el('form'); const result = output(''); const status = el('span', { class: 'form-status' }); const submitButton = el('button', { type: 'submit', class: extra.danger ? 'danger' : 'primary', text: submitLabel });
   form.append(el('div', { class: 'form-grid' }, specs.map(field)), el('div', { class: 'form-actions' }, status, submitButton), result);
-  form.addEventListener('submit', async event => { event.preventDefault(); const values = Object.fromEntries(new FormData(form)); if (extra.confirm && !await confirmAction(extra.confirm, extra.target || values.name || submitLabel)) return; submitButton.disabled = true; status.textContent = 'Working…'; result.textContent = ''; try { const response = await submit(values); result.textContent = typeof response === 'string' ? response : response?.output || JSON.stringify(response, null, 2); status.textContent = 'Completed'; extra.after?.(response, values); } catch (error) { status.textContent = 'Request failed'; result.textContent = error.message; toast(error.message, true); } finally { submitButton.disabled = false; } });
+  form.addEventListener('submit', async event => { event.preventDefault(); const values = Object.fromEntries(new FormData(form)); if (extra.confirm && !await confirmAction(extra.confirm, extra.target || values.name || submitLabel, { destructive: typeof extra.destructive === 'function' ? Boolean(extra.destructive(values)) : Boolean(extra.destructive) })) return; submitButton.disabled = true; status.textContent = 'Working…'; result.textContent = ''; try { const response = await submit(values); result.textContent = typeof response === 'string' ? response : response?.output || JSON.stringify(response, null, 2); status.textContent = 'Completed'; extra.after?.(response, values); } catch (error) { status.textContent = 'Request failed'; result.textContent = error.message; toast(error.message, true); } finally { submitButton.disabled = false; } });
   return form;
 }
 // Actions execute directly. Keep the shared async hook so existing action handlers and forms
 // follow the same policy without creating a confirmation dialog.
-export async function confirmAction() { return true; }
+// No confirmation dialogs, with one opt-in exception: destructive actions on a cluster tagged
+// "production" ask for the resource name to be typed once.
+export async function confirmAction(message, resourceName, { destructive = false } = {}) {
+  if (!destructive || !resourceName || hooks.clusterEnv?.() !== 'production') return true;
+  return new Promise(resolve => {
+    const dialog = el('dialog', { class: 'guard-dialog', 'aria-label': 'Confirm destructive action' });
+    const input = el('input', { 'aria-label': `Type ${resourceName} to confirm`, autocomplete: 'off', placeholder: resourceName });
+    const confirm = el('button', { type: 'submit', class: 'danger', disabled: true }, 'Confirm');
+    const finish = value => { dialog.remove(); resolve(value); };
+    input.addEventListener('input', () => { confirm.disabled = input.value !== resourceName; });
+    const form = el('form', { method: 'dialog' }, el('div', { class: 'page-heading' }, el('div', {}, el('h2', { text: 'Production cluster' }), el('p', { text: message }))), el('div', { class: 'field' }, el('label', { text: `Type ${resourceName} to continue` }), input), el('div', { class: 'form-actions' }, el('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'), confirm));
+    form.addEventListener('submit', event => { event.preventDefault(); if (input.value === resourceName) { dialog.close('confirmed'); } });
+    dialog.addEventListener('close', () => finish(dialog.returnValue === 'confirmed'));
+    dialog.append(form); document.body.append(dialog); dialog.showModal(); input.focus();
+  });
+}
 export function modal(title, description, content) {
   const dialog = $('#action-dialog');
   const close = button('×', () => dialog.close(), 'icon-button'); close.setAttribute('aria-label', 'Close dialog');

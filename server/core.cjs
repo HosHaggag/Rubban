@@ -10,6 +10,7 @@ const cp = require('node:child_process');
 const { WebSocketServer, WebSocket } = require('ws');
 const YAML = require('yaml');
 const { createLive } = require('./live.cjs');
+const { createKubeconfigStore, validateClusters } = require('./kubeconfigs.cjs');
 const { createActions } = require('./actions.cjs');
 const { createArgoCD } = require('./argocd.cjs');
 const { createRabbitMQ } = require('./rabbitmq.cjs');
@@ -280,7 +281,17 @@ function createBackend(options = {}) {
     fallback();
   }
 
+  const kubeconfigs = createKubeconfigStore({ dataDir });
+  config.kubeconfigs = kubeconfigs;
+  // Environment for every kubectl/helm process: the user's kubeconfig plus the imported ones (undefined while none are imported).
+  function kubeEnv() {
+    const variable = kubeconfigs.kubeconfigVariable();
+    return variable ? { ...process.env, KUBECONFIG: variable } : undefined;
+  }
+  config.kubeEnv = kubeEnv;
+
   function spawnCommand(command, args, spawnOptions = {}) {
+    if (!spawnOptions.env) { const env = kubeEnv(); if (env) spawnOptions = { ...spawnOptions, env }; }
     const spawn = injectedRunner && injectedRunner.spawn;
     if (injectedRunner && typeof spawn !== 'function') {
       throw problem('The injected runner does not support streaming commands', 503);
@@ -316,7 +327,7 @@ function createBackend(options = {}) {
       const operation = typeof injectedRunner === 'function'
         ? Promise.resolve().then(() => {
           if (abort.signal.aborted) throw problem('Command canceled', 499);
-          return injectedRunner(command, [...args], { ...runOptions, timeoutMs, maxBytes, signal: abort.signal, shell: false });
+          return injectedRunner(command, [...args], { ...runOptions, ...(runOptions.env ? {} : { env: kubeEnv() }), timeoutMs, maxBytes, signal: abort.signal, shell: false });
         })
         : new Promise((resolve, reject) => {
           let child;
@@ -405,6 +416,8 @@ function createBackend(options = {}) {
 
   async function writePreferences(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw problem('Preferences must be an object');
+    validateClusters(value.clusters);
+    if (value.theme !== undefined && !['system', 'light', 'dark'].includes(value.theme)) throw problem('Invalid theme');
     const serialized = JSON.stringify(value, null, 2);
     if (Buffer.byteLength(serialized) > 256 * 1024) throw problem('Preferences are too large', 413);
     await fsp.mkdir(dataDir, { recursive: true });
@@ -721,7 +734,16 @@ function createBackend(options = {}) {
       } else if (method === 'GET' && route === '/api/contexts') {
         const document = parseJSONOutput(await kube(['config', 'view', '--output=json'], { signal }), 'kubectl');
         const current = document['current-context'] || '';
-        sendJSON(res, { current, contexts: (document.contexts || []).map(item => ({ name: item.name, cluster: item.context?.cluster || '', user: item.context?.user || '', namespace: item.context?.namespace || 'default', current: item.name === current })) });
+        sendJSON(res, { current, contexts: (document.contexts || []).map(item => ({ source: kubeconfigs.sourceOf(item.name), name: item.name, cluster: item.context?.cluster || '', user: item.context?.user || '', namespace: item.context?.namespace || 'default', current: item.name === current })) });
+      } else if (method === 'GET' && route === '/api/kubeconfigs') {
+        sendJSON(res, { kubeconfigs: kubeconfigs.list() });
+      } else if (method === 'POST' && route === '/api/kubeconfigs') {
+        const names = (parseJSONOutput(await kube(['config', 'view', '--output=json'], { signal }), 'kubectl').contexts || []).map(item => item.name);
+        const entry = kubeconfigs.add({ name: body.name, content: body.content, source: body.source, fileName: body.fileName }, names);
+        sendJSON(res, entry, 201);
+      } else if (method === 'DELETE' && route.startsWith('/api/kubeconfigs/')) {
+        kubeconfigs.remove(route.slice('/api/kubeconfigs/'.length));
+        sendJSON(res, { removed: true });
       } else if (method === 'GET' && route === '/api/namespaces') {
         const context = validateText(query.context, 'context');
         sendJSON(res, await viaLive(() => live.list(context, 'namespaces', '', { signal }),
@@ -970,7 +992,7 @@ function createBackend(options = {}) {
   // selected namespace), so kubectl and helm in it target the cluster on screen.
   function scopedKubeconfig(context, namespace) {
     if (!context || injectedRunner) return null;
-    const output = cp.execFileSync(requireTool('kubectl'), ['config', 'view', '--raw', '--minify', '--flatten', `--context=${validateText(context, 'context')}`, '--output=json'], { timeout: 20000, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    const output = cp.execFileSync(requireTool('kubectl'), ['config', 'view', '--raw', '--minify', '--flatten', `--context=${validateText(context, 'context')}`, '--output=json'], { timeout: 20000, env: kubeEnv() || process.env, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     const config = JSON.parse(output);
     if (namespace && namespace !== '*' && config.contexts?.[0]?.context) config.contexts[0].context.namespace = validateNamespace(namespace);
     const directory = path.join(dataDir, 'terminals');
@@ -1037,7 +1059,7 @@ function createBackend(options = {}) {
           catch (error) { throw problem(`Could not prepare a kubeconfig for ${query.context}: ${shortError(error)}`, 502); }
         }
       }
-      const shellEnv = { ...process.env, TERM: 'xterm-256color', ...(kubeconfigFile ? { KUBECONFIG: kubeconfigFile, RUBBAN_CONTEXT: query.context } : {}) };
+      const shellEnv = { ...process.env, TERM: 'xterm-256color', ...(kubeEnv() || {}), ...(kubeconfigFile ? { KUBECONFIG: kubeconfigFile, RUBBAN_CONTEXT: query.context } : {}) };
       // Local shells start in the home folder; kubectl sessions do not depend on it.
       const workingDirectory = mode === 'local' && fs.existsSync(os.homedir()) ? os.homedir() : fs.existsSync(dataDir) ? dataDir : os.homedir();
       if (pty) {

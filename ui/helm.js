@@ -135,7 +135,7 @@ async function rollback(release, revision) {
   toast(result.output || 'Release rolled back.'); hooks.render?.();
 }
 export async function uninstall(release) {
-  if (!await confirmAction('Uninstall this Helm release and delete its managed Kubernetes resources.', release.name)) return;
+  if (!await confirmAction('Uninstall this Helm release and delete its managed Kubernetes resources.', release.name, { destructive: true })) return;
   const result = await post('/api/helm', { ...clusterQuery(), action: 'uninstall', namespace: release.namespace, name: release.name });
   toast(result.output || 'Release uninstalled.'); $('#drawer').classList.add('hidden'); state.selected = null; hooks.render?.();
 }

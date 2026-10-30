@@ -1,0 +1,91 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/check-version.cjs
+  windows:
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/electron/Cache
+          key: electron-win-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --no-audit --no-fund
+      - run: node scripts/fetch-tools.cjs win32 x64 tools-dl
+      - run: npm run package:win
+        env:
+          RUBBAN_BUNDLE_KUBECTL: tools-dl/kubectl.exe
+          RUBBAN_BUNDLE_HELM: tools-dl/helm.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: release/*.zip
+  macos:
+    needs: check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron
+          key: electron-mac-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --no-audit --no-fund
+      - run: |
+          node scripts/fetch-tools.cjs darwin arm64 tools-arm64
+          node scripts/fetch-tools.cjs darwin x64 tools-x64
+      - run: npm run package:mac -- --arch=arm64
+        env:
+          RUBBAN_BUNDLE_KUBECTL: tools-arm64/kubectl
+          RUBBAN_BUNDLE_HELM: tools-arm64/helm
+      - run: npm run package:mac -- --arch=x64
+        env:
+          RUBBAN_BUNDLE_KUBECTL: tools-x64/kubectl
+          RUBBAN_BUNDLE_HELM: tools-x64/helm
+      - name: Smoke test the arm64 build
+        run: |
+          mkdir -p /tmp/smoke
+          ditto -x -k release/Rubban-*-macOS-arm64.zip /tmp/smoke
+          RUBBAN_DATA_DIR=/tmp/smoke-data RUBBAN_SMOKE_DIR=/tmp/smoke-out /tmp/smoke/*/Rubban.app/Contents/MacOS/Rubban --smoke-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: release/*.zip
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - run: node scripts/write-manifest.cjs release
+      - run: node scripts/release-notes.cjs "${GITHUB_REF_NAME#v}" > notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body_path: notes.md
+          prerelease: ${{ contains(github.ref_name, '-') }}

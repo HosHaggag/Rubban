@@ -1,5 +1,10 @@
 import { $, state, hooks, makeForm, confirmAction, modal, el, button, badge, actions, output, info, loading, toast, task, api, get, post, clusterQuery, targetOf, socketURL, readStore, writeStore, age, statusOf, liveKey, liveStamp, table, page, panel, empty, displayError, dl, link, MOD } from './kit.js';
 import { createUsage } from './usage.js';
+import { applyTheme, storedTheme, THEMES } from './theme.js';
+import { renderCluster, openSwitcher, clustersPage, importPanels, infoFor, labelFor, envFor } from './clusterui.js';
+import { clusterIcon } from './cluster-icons.js';
+import { startTour } from './tour.js';
+import { setupUpdates, updatesPanel } from './updates.js';
 import { formatCPU, formatBytes, formatPercent, parseCPU, parseMemory } from './format.js';
 import { lineChart, meter } from './charts.js';
 import { kindColumns, pageContext, needsPods, usesUsage, podScopeFor, searchTextFor, eventColumns, eventTime, involved, usageCell, controllerOf, resourceForKind, isControlPlane, nodeCondition } from './kinds.js';
@@ -110,6 +115,7 @@ const EXTRA_VIEWS = [
   leaf('Metrics & monitoring', 'metrics', undefined, { icon: 'metrics' }),
   leaf('API resources', 'discovery', undefined, { icon: 'custom' }),
   leaf('AI assistant', 'ai', undefined, { icon: 'ai' }),
+  leaf('Clusters', 'clusters', undefined, { icon: 'cluster' }),
   leaf('Settings', 'settings', undefined, { icon: 'settings' }),
 ];
 const BUILTIN_GROUP = group => !group || ['apps', 'batch', 'autoscaling', 'policy'].includes(group) || (group.endsWith('.k8s.io') && group !== 'autoscaling.k8s.io');
@@ -356,9 +362,9 @@ async function selectContext(name) {
   state.contextAbort?.abort();
   const contextAbort = new AbortController(); state.contextAbort = contextAbort;
   state.context = name; state.namespace = '*'; state.discovery = []; state.crds = null; state.selected = null;
-  $('#context').value = name; $('#drawer').classList.add('hidden'); state.drawerHistory = [];
+  $('#drawer').classList.add('hidden'); state.drawerHistory = [];
   usage.setContext(name);
-  $('#workspace-context').textContent = name || 'Local workspace'; $('#context-caption').textContent = name ? 'Live connection · kubeconfig credentials' : 'Choose a kubeconfig context';
+  $('#context-caption').textContent = name ? 'Live connection · kubeconfig credentials' : 'Choose a kubeconfig context';
   $('#connection-status').textContent = name ? 'Context selected' : 'No cluster selected';
   $('#connection-dot').classList.toggle('connected', Boolean(name)); $('#workspace-dot').classList.toggle('connected', Boolean(name));
   $('#namespace').replaceChildren(el('option', { value: '*', text: 'All namespaces' }));
@@ -400,10 +406,11 @@ async function selectContext(name) {
 function welcome() {
   const root = el('div', { class: 'welcome' }, el('span', { class: 'welcome-tag' }, '◈  YOUR INDEPENDENT WORKSPACE'), el('h1', { text: 'Your clusters. A clearer perspective.' }), el('p', { text: 'Explore Kubernetes, troubleshoot workloads, and manage your infrastructure from one local desktop workspace. Choose a kubeconfig context to get started.' }));
   const choices = el('div', { class: 'context-list' });
-  for (const context of state.contexts) choices.append(button([el('span', { text: '⬡' }), el('div', {}, el('strong', { text: context.name }), el('small', { text: context.cluster || 'Kubeconfig context' })), el('span', { class: 'spacer' }), el('span', { text: '→' })], () => selectContext(context.name), 'context-choice'));
+  for (const context of state.contexts) { const meta = infoFor(context.name); const mark = el('span', { style: `color:${meta.color}` }); mark.append(clusterIcon(meta.icon)); choices.append(button([mark, el('div', {}, el('strong', { text: meta.label }), el('small', { text: meta.label === context.name ? context.cluster || 'Kubeconfig context' : context.name })), el('span', { class: 'spacer' }), meta.env ? badge(meta.env, meta.env === 'production' ? 'bad' : meta.env === 'staging' ? 'warn' : 'info') : null, el('span', { text: '→' })], () => selectContext(context.name), 'context-choice')); }
   if (state.contextsError) choices.append(info(`Could not read kubeconfig contexts: ${state.contextsError}`, 'error'), button('Reload contexts', task(reloadContexts), 'compact'));
-  else if (!state.contexts.length) choices.append(info('No kubeconfig contexts were found. Install kubectl and configure a kubeconfig context to connect your cluster.'));
+  else if (!state.contexts.length) choices.append(info('No kubeconfig contexts were found. Paste or import a kubeconfig below, or configure one with kubectl.'));
   root.append(el('div', { class: 'welcome-grid' }, panel('Choose a cluster', choices, badge(`${state.contexts.length} contexts`)), panel('Built for the work you do', [el('div', { class: 'feature-row' }, el('span', { text: '▦' }), el('div', {}, el('strong', { text: 'See the whole cluster' }), 'Workloads, networking, storage, access, and custom resources.')), el('div', { class: 'feature-row' }, el('span', { text: '›_' }), el('div', {}, el('strong', { text: 'Troubleshoot in context' }), 'Live logs, interactive terminals, metrics, and port forwarding.')), el('div', { class: 'feature-row' }, el('span', { text: '⑂' }), el('div', {}, el('strong', { text: 'Operate on your terms' }), 'Helm, Argo CD, and your own connected services.'))])));
+  root.append(el('div', { style: 'margin-top:18px' }, importPanels(() => openView('clusters'))));
   const tools = state.health?.tools || {};
   root.append(el('div', { class: 'actions', style: 'margin-top:22px' }, badge(`kubectl ${toolAvailable(tools.kubectl) ? 'available' : 'not found'}`, toolAvailable(tools.kubectl) ? 'good' : 'warn'), badge(`Helm ${toolAvailable(tools.helm) ? 'available' : 'not found'}`, toolAvailable(tools.helm) ? 'good' : 'warn'), button('Connection settings', () => openView('settings'), 'quiet compact')));
   return root;
@@ -415,7 +422,7 @@ async function render() {
   const id = ++state.renderId;
   const tab = activeTab();
   $('#status-message').textContent = state.context ? (state.namespace === '*' ? 'all namespaces' : state.namespace) : 'Ready';
-  const globalPages = ['settings', 'ai', 'forwards', 'helm-charts'];
+  const globalPages = ['settings', 'ai', 'forwards', 'helm-charts', 'clusters'];
   if (!state.context && !globalPages.includes(tab.section)) { $('#main').replaceChildren(welcome()); return; }
   $('#main').replaceChildren(loading());
   try {
@@ -434,6 +441,7 @@ async function render() {
       case 'forwards': node = await forwardsPage(); break;
       case 'discovery': node = discoveryPage(); break;
       case 'settings': node = await settingsPage(); break;
+      case 'clusters': node = await clustersPage(); break;
       case 'ai': node = aiPage(); break;
       default: node = empty('View not available', 'Select a view from the sidebar.');
     }
@@ -1184,6 +1192,10 @@ async function settingsPage() {
   renderFavorites();
   const root = page('Settings', 'Preferences are stored locally on this computer. Service endpoints are used only when you request data.');
   const save = async patch => { state.preferences = await api('/api/preferences', { method: 'PUT', body: { ...state.preferences, ...patch } }); renderFavorites(); toast('Preferences saved.'); return 'Preferences saved locally.'; };
+  root.append(panel('Help', [el('p', { class: 'muted', text: 'A short walk through the main parts of Rubban.' }), el('div', { class: 'actions' }, button('Show the tour', () => takeTour(), 'compact'))]));
+  root.append(updatesPanel());
+  const themeLabels = { system: 'System', light: 'Light', dark: 'Dark' };
+  root.append(panel('Appearance', makeForm([{ name: 'theme', label: 'Theme', options: THEMES.map(value => ({ value, label: themeLabels[value] })), value: state.preferences.theme || 'system', help: 'System follows your Windows or macOS appearance setting.' }], 'Save appearance', values => { applyTheme(values.theme); return save({ theme: values.theme }); })));
   if (state.context) {
     const current = state.preferences.prometheusByContext?.[state.context] || { mode: 'auto' };
     const form = makeForm([
@@ -1208,7 +1220,7 @@ async function settingsPage() {
   const environment = el('div'); for (const [name, value] of Object.entries(state.health?.tools || {})) environment.append(el('div', { class: 'key-value' }, el('span', { text: name }), el('span', {}, badge(toolAvailable(value) ? 'Available' : 'Not found', toolAvailable(value) ? 'good' : 'warn'), el('span', { class: 'mono', style: 'margin-left:10px', text: typeof value === 'object' ? value?.path || value?.version || '' : typeof value === 'string' ? value : '' }))));
   environment.append(el('div', { class: 'key-value' }, el('span', { text: 'Platform' }), el('span', { text: state.health?.platform || 'Unknown' })), el('div', { class: 'key-value' }, el('span', { text: 'App version' }), el('span', { text: state.health?.version || 'Development build' })));
   root.append(panel('Prerequisites', environment), info('Rubban uses local kubeconfig contexts and installed command line tools. Cluster connection, metrics, Argo CD and cost availability depend on your infrastructure.'));
-  root.append(panel('Keyboard shortcuts', dl([[`${MOD}+K`, 'Command palette'], [`${MOD}+1`, 'Cluster overview'], [`${MOD}+\``, 'Show or hide the terminal dock'], ['/', 'Filter the sidebar'], ['Esc', 'Close the details panel'], ['Right-click a row', 'Row actions']])));
+  root.append(panel('Keyboard shortcuts', dl([[`${MOD}+K`, 'Command palette'], [`${MOD}+Shift+K`, 'Switch cluster'], [`${MOD}+1`, 'Cluster overview'], [`${MOD}+\``, 'Show or hide the terminal dock'], ['/', 'Filter the sidebar'], ['Esc', 'Close the details panel'], ['Right-click a row', 'Row actions']])));
   return root;
 }
 function aiPage() {
@@ -1218,20 +1230,7 @@ function aiPage() {
   return root;
 }
 function commandPalette() { $('#command-dialog').showModal(); $('#command-search').value = ''; commandResults(''); $('#command-search').focus(); }
-function renderFavorites() {
-  const favorites = Array.isArray(state.preferences.favoriteContexts) ? state.preferences.favoriteContexts.filter(name => typeof name === 'string') : [];
-  $('#context-favorites').replaceChildren(...favorites.map(name => {
-    const available = state.contexts.some(context => context.name === name);
-    const node = button(name.slice(0, 2).toUpperCase(), () => selectContext(name), `favorite-context${name === state.context ? ' selected' : ''}`);
-    node.title = available ? `Switch to ${name} · pinned context` : `${name} · context is missing from kubeconfig`;
-    node.setAttribute('aria-label', node.title); node.disabled = !available; return node;
-  }));
-  const pinned = favorites.includes(state.context);
-  $('#pin-context').textContent = pinned ? '★' : '☆';
-  $('#pin-context').disabled = !state.context;
-  $('#pin-context').title = pinned ? 'Unpin selected context from hotbar' : 'Pin selected context to hotbar';
-  $('#pin-context').setAttribute('aria-label', $('#pin-context').title);
-}
+function renderFavorites() { renderCluster(); }
 async function toggleFavorite() {
   if (!state.context) return;
   const favorites = Array.isArray(state.preferences.favoriteContexts) ? state.preferences.favoriteContexts.filter(name => typeof name === 'string') : [];
@@ -1243,17 +1242,38 @@ function commandResults(query) {
   const needle = query.toLowerCase();
   const choices = allNav().filter(item => `${item.title} ${item.tabTitle || ''} ${item.resource || ''} ${item.trail.map(node => node.title).join(' ')}`.toLowerCase().includes(needle));
   $('#command-results').replaceChildren(...choices.slice(0, 80).map(item => button([icon(item.icon || item.trail[0]?.icon || 'overview', 'command-svg'), el('span', { text: item.title }), el('small', { text: item.trail.map(node => node.title).join(' › ') || 'Workspace' })], () => { $('#command-dialog').close(); openView(item.section, item.resource, item.tabTitle || item.title); }, 'command-option')));
-  if (!choices.length) $('#command-results').append(el('p', { class: 'list-note', style: 'padding:12px', text: 'No matching views.' }));
+  if ('take the tour onboarding help'.includes(needle) && needle) $('#command-results').prepend(button([icon('overview', 'command-svg'), el('span', { text: 'Take the tour' }), el('small', { text: 'Help' })], () => { $('#command-dialog').close(); takeTour(); }, 'command-option'));
+  if (!choices.length && !$('#command-results').children.length) $('#command-results').append(el('p', { class: 'list-note', style: 'padding:12px', text: 'No matching views.' }));
 }
 async function reloadContexts() {
   let response;
   try { response = await get('/api/contexts'); state.contextsError = ''; } catch (error) { state.contextsError = error.message; if (!state.context) render(); throw error; }
   state.contexts = response.contexts || [];
-  $('#context').replaceChildren(el('option', { value: '', text: 'Select a cluster…' }), ...state.contexts.map(context => el('option', { value: context.name, text: context.name })));
-  $('#context').value = state.context;
   renderFavorites();
   if (!state.context) render();
 }
+// ---- Onboarding tour --------------------------------------------------------------------------
+const waitFor = async (test, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { const found = test(); if (found) return found; await new Promise(resolve => setTimeout(resolve, 100)); } return null; };
+const tourSteps = () => [
+  { id: 'cluster', target: () => $('#context-switcher'), placement: 'right', title: 'Pick a cluster', body: 'Rubban reads your kubeconfig and never changes it. Pin clusters here for one-click switching, or import a kubeconfig from the Clusters page.' },
+  { id: 'namespace', target: () => $('#namespace'), placement: 'bottom', title: 'Namespaces', body: 'Scope every view to one namespace, or keep all namespaces.' },
+  { id: 'navigation', target: () => $('#navigation'), placement: 'right', title: 'The sidebar', body: 'Workloads, config, network, storage, Helm, Argo CD, RabbitMQ and custom resources are all here. Press / to filter.' },
+  { id: 'command', target: () => $('#command-open'), placement: 'bottom', title: 'Jump anywhere', body: `${MOD}+K opens any view or resource. ${MOD}+Shift+K switches cluster.` },
+  { id: 'row', when: ctx => ctx.cluster, before: async () => { openView('resource', 'pods'); await waitFor(() => $('#main table tbody tr')); }, target: () => $('#main table tbody tr'), placement: 'bottom', title: 'Details on click', body: 'Click a row for its overview, metrics, YAML and events.' },
+  { id: 'row-actions', when: ctx => ctx.cluster, target: () => $('#main table tbody tr .row-menu'), placement: 'left', title: 'Row actions', body: 'Edit YAML, scale, restart, open logs or a shell, delete. Right-click works too.' },
+  { id: 'terminal', target: () => $('#local-terminal'), placement: 'bottom', title: 'Terminal', body: 'Open a terminal already pointed at this cluster. Pod exec, attach and node shells open in the same dock.' },
+  { id: 'create', target: () => $('#create-manifest'), placement: 'bottom', title: 'Create', body: 'Create any resource from a template or your own YAML.' },
+  { id: 'settings', target: () => document.querySelector('[data-section="settings"]'), placement: 'right', title: 'Settings', body: 'Theme, metrics source, node shell image and shortcuts live in Settings.' },
+  { id: 'updates', when: () => document.querySelector('#update-button'), target: () => $('#update-button'), placement: 'right', title: 'Updates', body: 'Rubban checks GitHub for new versions and installs them in place.' },
+  { id: 'done', target: () => null, placement: 'bottom', title: 'You are set', body: 'Restart the tour any time from Settings › Help or the command palette.' },
+];
+const minorVersion = () => String(state.health?.version || '').split('.').slice(0, 2).join('.');
+function takeTour(reason = 'manual') {
+  const cluster = Boolean(state.context);
+  startTour({ steps: tourSteps(), ctx: { cluster }, reason, skippedNote: cluster ? '' : 'Connect a cluster to see the table and row steps.',
+    savePreference: async () => { try { state.preferences = await api('/api/preferences', { method: 'PUT', body: { ...state.preferences, tourCompletedVersion: minorVersion() || 'seen' } }); } catch { /* Preferences are optional here. */ } } });
+}
+applyTheme(storedTheme());
 async function init() {
   document.querySelectorAll('[data-icon]').forEach(node => {
     const svgIcon = icon(node.dataset.icon, node.classList.contains('rail-button') ? 'rail-svg' : 'ui-svg');
@@ -1262,14 +1282,16 @@ async function init() {
   navigation(); renderTabs(); $('#main').replaceChildren(loading());
   const results = await Promise.allSettled([get('/api/health'), get('/api/contexts'), get('/api/preferences')]);
   if (results[0].status === 'fulfilled') { state.health = results[0].value; $('#app-version').textContent = `Rubban ${state.health.version || 'Desktop'}`; }
-  if (results[1].status === 'fulfilled') { state.contexts = results[1].value.contexts || []; $('#context').append(...state.contexts.map(context => el('option', { value: context.name, text: context.name }))); }
+  if (results[1].status === 'fulfilled') { state.contexts = results[1].value.contexts || []; }
   else state.contextsError = results[1].reason.message;
-  if (results[2].status === 'fulfilled') state.preferences = results[2].value;
+  if (results[2].status === 'fulfilled') { state.preferences = results[2].value; applyTheme(state.preferences.theme || 'system'); }
   renderFavorites();
   for (const result of results) if (result.status === 'rejected') toast(result.reason.message, true);
   render();
+  setupUpdates({ openSettings: () => openView('settings') });
+  if (results[2].status === 'fulfilled' && !state.preferences.tourCompletedVersion) setTimeout(() => takeTour('first-run'), 600);
 }
-$('#context').addEventListener('change', event => selectContext(event.target.value));
+$('#context-switcher').addEventListener('click', openSwitcher);
 $('#pin-context').addEventListener('click', task(toggleFavorite));
 $('#namespace').addEventListener('change', event => { state.namespace = event.target.value; $('#drawer').classList.add('hidden'); render(); });
 $('#nav-search').addEventListener('input', event => navigation(event.target.value));
@@ -1294,6 +1316,6 @@ document.addEventListener('pointerdown', event => {
 }, { capture: true });
 setupDock();
 if (MOD !== 'Ctrl') { const kbd = $('#command-open kbd'); if (kbd) kbd.textContent = `${MOD}K`; $('#dock-min')?.setAttribute('title', `Hide dock (${MOD}+\`)`); }
-document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === '`') { event.preventDefault(); toggleDock(); } if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); commandPalette(); } if ((event.ctrlKey || event.metaKey) && event.key === '1') { event.preventDefault(); openView('overview'); } if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closeDrawer(); });
-Object.assign(hooks, { showResource, openView, render, afterMutation, openLogs, openTerminal, argoMenu, openExternal: openExternalLink });
+document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === '`') { event.preventDefault(); toggleDock(); } if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); openSwitcher(); } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); commandPalette(); } if ((event.ctrlKey || event.metaKey) && event.key === '1') { event.preventDefault(); openView('overview'); } if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closeDrawer(); });
+Object.assign(hooks, { takeTour, selectContext, reloadContexts, labelFor, clusterEnv: () => envFor(state.context), showResource, openView, render, afterMutation, openLogs, openTerminal, argoMenu, openExternal: openExternalLink });
 init();

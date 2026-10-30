@@ -115,6 +115,7 @@ export function syncDialog(apps, { preset = {} } = {}) {
 }
 export async function deleteApplications(apps, cascade = 'foreground') {
   const list = Array.isArray(apps) ? apps : [apps];
+  if (!await confirmAction(`Delete ${list.length === 1 ? list[0].metadata.name : `${list.length} applications`} from Argo CD${cascade === 'none' ? '' : ' and its managed resources'}.`, list.length === 1 ? list[0].metadata.name : `${list.length} applications`, { destructive: true })) return;
   let failed = 0;
   for (const app of list) {
     try { await post('/api/argocd', { ...target(app), action: 'delete', cascade }); }

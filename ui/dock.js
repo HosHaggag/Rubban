@@ -1,12 +1,17 @@
 // Bottom dock with tabbed sessions: pod/workload logs and terminals (pod exec, attach, node
 // shell, local shell). Each tab keeps its own socket; the dock is resizable and remembers height.
-import { $, el, button, toast, task, socketURL, readStore, writeStore, download, state } from './kit.js';
+import { $, el, button, toast, task, socketURL, readStore, writeStore, download, state, hooks } from './kit.js';
+import { currentTheme, onThemeChange } from './theme.js';
 
 const sessions = [];
 let active = null;
 let counter = 0;
 let highlightOwner = null;
-const XTERM_THEME = { background: '#181a1c', foreground: '#d4d6d8', cursor: '#f1f3f5', cursorAccent: '#181a1c', selectionBackground: '#3d90ce66', black: '#282a2d', red: '#ce3933', green: '#4caf50', yellow: '#ff9800', blue: '#3d90ce', magenta: '#c93dce', cyan: '#26a69a', white: '#aaacae', brightBlack: '#787b7c', brightRed: '#e85555', brightGreen: '#66bb6a', brightYellow: '#ffb74d', brightBlue: '#64a9e0', brightMagenta: '#d670da', brightCyan: '#4db6ac', brightWhite: '#f1f3f5' };
+const XTERM_DARK = { background: '#181a1c', foreground: '#d4d6d8', cursor: '#f1f3f5', cursorAccent: '#181a1c', selectionBackground: '#3d90ce66', black: '#282a2d', red: '#ce3933', green: '#4caf50', yellow: '#ff9800', blue: '#3d90ce', magenta: '#c93dce', cyan: '#26a69a', white: '#aaacae', brightBlack: '#787b7c', brightRed: '#e85555', brightGreen: '#66bb6a', brightYellow: '#ffb74d', brightBlue: '#64a9e0', brightMagenta: '#d670da', brightCyan: '#4db6ac', brightWhite: '#f1f3f5' };
+const XTERM_LIGHT = { background: '#ffffff', foreground: '#2b2f36', cursor: '#15181d', cursorAccent: '#ffffff', selectionBackground: '#2f6f9a33', black: '#2b2f36', red: '#b4403a', green: '#2f8f4e', yellow: '#a9711a', blue: '#2f6f9a', magenta: '#8a4d8a', cyan: '#2a7c70', white: '#6b7380', brightBlack: '#5d6570', brightRed: '#c9514b', brightGreen: '#3aa15e', brightYellow: '#b98228', brightBlue: '#3b82b0', brightMagenta: '#9d5e9d', brightCyan: '#3a8f82', brightWhite: '#15181d' };
+const xtermTheme = () => currentTheme() === 'light' ? XTERM_LIGHT : XTERM_DARK;
+const terminals = new Set();
+onThemeChange(() => { for (const terminal of terminals) { try { terminal.options.theme = xtermTheme(); } catch { /* Disposed. */ } } });
 
 const dock = () => $('#dock');
 function show() {
@@ -155,7 +160,7 @@ export async function openTerminal(target = {}) {
   let socket = null; let terminal = null; let fit = null;
   const session = {
     kind: 'terminal', context: target.context, title: target.title || 'Local shell', root,
-    dispose: () => { socket?.close(); socket = null; terminal?.dispose(); terminal = null; },
+    dispose: () => { socket?.close(); socket = null; if (terminal) terminals.delete(terminal); terminal?.dispose(); terminal = null; },
     copy: () => terminal?.getSelection() || '',
     onShow: () => { requestAnimationFrame(() => { try { fit?.fit(); terminal?.focus(); } catch { /* Not visible yet. */ } }); },
     fit: () => { try { fit?.fit(); } catch { /* Hidden. */ } },
@@ -165,7 +170,7 @@ export async function openTerminal(target = {}) {
   try {
     const { Terminal, FitAddon } = await import('/vendor.js');
     if (!sessions.includes(session)) return session;
-    terminal = new Terminal({ cursorBlink: false, fontSize: 12, scrollback: 10000, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace", theme: XTERM_THEME });
+    terminal = new Terminal({ cursorBlink: false, fontSize: 12, scrollback: 10000, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace", theme: xtermTheme() }); terminals.add(terminal);
     fit = new FitAddon(); terminal.loadAddon(fit); terminal.open(host); fit.fit();
     const query = target.node ? { context: target.context, node: target.node, image: target.image } : target.pod ? { context: target.context, namespace: target.namespace, pod: target.pod, container: target.container, attach: target.attach ? 'true' : undefined } : target.context ? { context: target.context, namespace: target.namespace } : {};
     const ws = new WebSocket(socketURL('/api/terminal', query)); socket = ws;
@@ -210,6 +215,6 @@ export function setupDock() {
 }
 export const hasSessions = () => sessions.length > 0;
 // Local shells opened while a cluster is selected get a kubeconfig scoped to it.
-export const localShellTarget = () => (state.context ? { title: `Shell · ${state.context}`, context: state.context, namespace: state.namespace === '*' ? '' : state.namespace } : { title: 'Local shell' });
+export const localShellTarget = () => (state.context ? { title: `Shell · ${hooks.labelFor?.(state.context) || state.context}`, context: state.context, namespace: state.namespace === '*' ? '' : state.namespace } : { title: 'Local shell' });
 export function toggleDock() { if (!sessions.length) { openTerminal(localShellTarget()); return; } if (dock().classList.contains('hidden')) activate(active || sessions[0]); else dock().classList.add('hidden'); }
 export { state as dockState };

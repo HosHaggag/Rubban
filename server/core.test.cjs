@@ -99,7 +99,7 @@ test('health starts with no kubeconfig reads or subprocesses; contexts return me
   assert.equal(health.headers.get('access-control-allow-origin'), null);
   const contexts = await f.request('/api/contexts');
   assert.equal(contexts.value.current, 'development');
-  assert.deepEqual(contexts.value.contexts, [{ name: 'development', cluster: 'dev-cluster', user: 'dev-user', namespace: 'apps', current: true }]);
+  assert.deepEqual(contexts.value.contexts, [{ source: 'default', name: 'development', cluster: 'dev-cluster', user: 'dev-user', namespace: 'apps', current: true }]);
   assert.equal(JSON.stringify(contexts.value).includes('must-never-be-returned'), false);
   assert.deepEqual(f.calls[0].args, ['config', 'view', '--output=json']);
   assert.equal(f.calls[0].options.shell, false);
@@ -273,6 +273,13 @@ test('Helm mutations validate actions and send values on stdin without invoking 
   assert.equal((await f.request('/api/helm', 'POST', { action: 'install', context: 'dev', name: 'x', chart: '../private' })).status, 400);
   assert.equal((await f.request('/api/helm', 'POST', { action: 'repo-add', repo: 'public', url: 'https://charts.example.com' })).status, 200);
   assert.deepEqual(f.calls.at(-1).args, ['repo', 'add', 'public', 'https://charts.example.com/']);
+});
+
+test('theme preference accepts system, light and dark only', async t => {
+  const f = await fixture(t);
+  for (const theme of ['system', 'light', 'dark']) assert.equal((await f.request('/api/preferences', 'PUT', { theme })).status, 200);
+  assert.equal((await f.request('/api/preferences')).value.theme, 'dark');
+  assert.equal((await f.request('/api/preferences', 'PUT', { theme: 'purple' })).status, 400);
 });
 
 test('independent preferences are persisted atomically and extras receive shared helpers', async t => {
@@ -580,4 +587,44 @@ test('RabbitMQ discovery lists consoles without credential values; credentials c
   assert.deepEqual([creds.value.username, creds.value.password], ['ops', 's3cret/+']);
   assert.equal((await f.request('/api/rabbitmq/credentials', 'POST', { context: 'dev', namespace: 'mq', service: 'web' })).status, 404);
   assert.equal((await f.request('/api/rabbitmq/credentials', 'POST', { context: 'dev', namespace: 'mq', service: '-x' })).status, 400);
+});
+
+const sampleKubeconfig = (context, extra = '') => `apiVersion: v1\nkind: Config\nclusters:\n- name: ${context}-c\n  cluster: { server: 'https://127.0.0.1:1' }\nusers:\n- name: ${context}-u\n  user: { token: secret-token }\ncontexts:\n- name: ${context}\n  context: { cluster: ${context}-c, user: ${context}-u }\n${extra}`;
+
+test('imported kubeconfigs are stored privately, merged through KUBECONFIG and removable', async t => {
+  const contextsFor = options => {
+    const imported = String(options?.env?.KUBECONFIG || '').split(path.delimiter).filter(file => file.endsWith('.yaml'));
+    return output({ 'current-context': 'base', contexts: [{ name: 'base', context: { cluster: 'b', user: 'u' } }, ...imported.map((_file, index) => ({ name: `imported-${index}`, context: { cluster: 'c', user: 'u' } }))] });
+  };
+  const f = await fixture(t, (command, args, options) => args[0] === 'config' ? contextsFor(options) : output({ items: [] }));
+  assert.equal((await f.request('/api/kubeconfigs')).value.kubeconfigs.length, 0);
+  assert.equal(f.backend.config.kubeEnv(), undefined);
+  assert.equal((await f.request('/api/kubeconfigs', 'POST', { content: 'not: a kubeconfig' })).status, 400);
+  assert.equal((await f.request('/api/kubeconfigs', 'POST', { content: sampleKubeconfig('base') })).status, 409);
+  assert.equal((await f.request('/api/kubeconfigs', 'POST', { content: 'x'.repeat(1024 * 1024 + 10) })).status, 413);
+  const created = await f.request('/api/kubeconfigs', 'POST', { name: 'Staging', content: sampleKubeconfig('staging'), source: 'paste' });
+  assert.equal(created.status, 201);
+  assert.deepEqual(created.value.contexts, ['staging']);
+  assert.equal(JSON.stringify(created.value).includes('secret-token'), false);
+  const file = path.join(f.backend.config.dataDir, 'kubeconfigs', `${created.value.id}.yaml`);
+  if (process.platform !== 'win32') assert.equal((await fs.stat(file)).mode & 0o777, 0o600);
+  const variable = f.backend.config.kubeEnv().KUBECONFIG.split(path.delimiter);
+  assert.equal(variable.at(-1), file);
+  assert.equal(variable.length, 2);
+  const contexts = (await f.request('/api/contexts')).value.contexts;
+  assert.equal(contexts.find(item => item.name === 'base').source, 'default');
+  assert.equal(f.calls.at(-1).options.env.KUBECONFIG, f.backend.config.kubeEnv().KUBECONFIG);
+  assert.equal((await f.request(`/api/kubeconfigs/${created.value.id}`, 'DELETE')).status, 200);
+  assert.equal((await f.request('/api/kubeconfigs')).value.kubeconfigs.length, 0);
+  await assert.rejects(fs.stat(file));
+  assert.equal((await f.request(`/api/kubeconfigs/${created.value.id}`, 'DELETE')).status, 404);
+});
+
+test('cluster display preferences are validated', async t => {
+  const f = await fixture(t);
+  const good = { clusters: { 'gke_a_b_c': { label: 'Tracking · prod', icon: 'gcp', color: '#2f8f4e', env: 'production' } } };
+  assert.equal((await f.request('/api/preferences', 'PUT', good)).status, 200);
+  for (const bad of [{ icon: 'skull' }, { color: 'red' }, { env: 'moon' }, { label: 'x'.repeat(81) }]) {
+    assert.equal((await f.request('/api/preferences', 'PUT', { clusters: { dev: bad } })).status, 400);
+  }
 });

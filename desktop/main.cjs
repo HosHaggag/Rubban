@@ -1,12 +1,13 @@
 'use strict';
 // macOS (and Linux desktop) launches do not inherit the login shell's PATH; read it once.
 if (process.platform !== 'win32') require('../server/shell-env.cjs').importShellEnvironment();
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, nativeTheme } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { createBackend } = require('../server/core.cjs');
 const { createExtras } = require('../server/extras.cjs');
 const { createLogger } = require('../server/log.cjs');
+const { createUpdater } = require('./updater.cjs');
 
 app.setName('Rubban');
 const root = path.resolve(__dirname, '..');
@@ -30,7 +31,7 @@ app.setPath('userData', path.join(dataDir, 'desktop-profile'));
 app.setPath('sessionData', path.join(dataDir, 'desktop-profile'));
 app.setAppUserModelId('dev.rubban.desktop');
 const smoke = process.argv.includes('--smoke-test');
-let backend, connection, window, closing = false;
+let backend, connection, window, updater, closing = false;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
@@ -53,7 +54,7 @@ async function start() {
   window = new BrowserWindow({
     title: 'Rubban · رُبّان', width: 1540, height: 970, minWidth: 1050, minHeight: 700,
     icon: path.join(root, 'assets', 'rubban.png'),
-    backgroundColor: '#1f2123', show: !smoke, autoHideMenuBar: true,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f2123' : '#ffffff', show: !smoke, autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, spellcheck: false },
   });
   const allowed = new URL(connection.url).origin;
@@ -66,10 +67,22 @@ async function start() {
   // New windows never open inside Rubban; web links (for example from an embedded RabbitMQ
   // console) go directly to the system browser.
   window.webContents.setWindowOpenHandler(({ url }) => { openExternalLink(url).catch(() => {}); return { action: 'deny' }; });
-  ipcMain.handle('rubban:open-external', async (event, target) => {
+  ipcMain.handle('rubban:set-theme', (event, preference) => {
     if (event.sender !== window.webContents || new URL(event.senderFrame.url).origin !== allowed) throw new Error('Invalid sender.');
-    await openExternalLink(target);
+    if (['system', 'light', 'dark'].includes(preference)) nativeTheme.themeSource = preference;
   });
+  const fromRubban = event => { if (event.sender !== window.webContents || new URL(event.senderFrame.url).origin !== allowed) throw new Error('Invalid sender.'); };
+  ipcMain.handle('rubban:open-external', async (event, target) => { fromRubban(event); await openExternalLink(target); });
+  updater = createUpdater({ app, dataDir, log: logger, getPreferences: () => backend.config.readPreferences(), onState: state => { if (window && !window.isDestroyed()) window.webContents.send('rubban:update-state', state); } });
+  ipcMain.handle('rubban:update-get', event => { fromRubban(event); return updater.getState(); });
+  ipcMain.handle('rubban:update-check', event => { fromRubban(event); return updater.check(); });
+  ipcMain.handle('rubban:update-download', event => { fromRubban(event); return updater.download(); });
+  ipcMain.handle('rubban:update-install', event => { fromRubban(event); return updater.install(); });
+  const checkFromMenu = async () => {
+    const state = await updater.check();
+    const detail = state.disabled ? 'Updates are turned off in this build.' : state.status === 'error' ? `Could not check for updates: ${state.error}` : state.status === 'up-to-date' ? `You have the latest version (${state.current}).` : `Version ${state.latest} is available. Open Settings › Updates to install it.`;
+    dialog.showMessageBox(window, { title: 'Rubban', message: 'Check for updates', detail });
+  };
   const about = () => dialog.showMessageBox(window, { title: 'Rubban', message: `Rubban ${app.getVersion()}`, detail: 'An independent Kubernetes workbench.' });
   const mac = process.platform === 'darwin';
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -81,7 +94,7 @@ async function start() {
     { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, { label: 'Developer tools', accelerator: 'CmdOrCtrl+Shift+I', click: () => window.webContents.toggleDevTools() }] },
     ...(mac ? [{ role: 'windowMenu' }] : []),
-    { label: 'Help', submenu: [{ label: 'Open log folder', click: () => shell.openPath(logger.dir) }, { label: 'About Rubban', click: about }] },
+    { label: 'Help', submenu: [{ label: 'Check for updates…', click: checkFromMenu }, { label: 'Open log folder', click: () => shell.openPath(logger.dir) }, { label: 'About Rubban', click: about }] },
   ]));
   const rendererErrors = [];
   window.webContents.on('console-message', (_event, details, legacyMessage) => {
@@ -89,6 +102,7 @@ async function start() {
     else if (details === 3) { rendererErrors.push(String(legacyMessage)); logger.error(String(legacyMessage), { kind: 'renderer' }); }
   });
   await window.loadURL(connection.url);
+  updater.start();
   if (smoke) {
     await new Promise(resolve => setTimeout(resolve, 2200));
     const info = await window.webContents.executeJavaScript('({title:document.title,ready:document.readyState,bodyLength:document.body.innerText.length,body:document.body.innerText.slice(0,3000)})');
@@ -116,6 +130,7 @@ app.on('window-all-closed', () => app.quit());
 app.on('before-quit', event => {
   if (closing || !backend) return;
   event.preventDefault(); closing = true;
+  updater?.stop();
   Promise.resolve(backend.close()).finally(() => {
     try { fs.unlinkSync(path.join(dataDir, 'connection.json')); } catch {}
     app.quit();

@@ -10,7 +10,7 @@
     "start": "electron .",
     "web": "node server/start.cjs",
     "build:ui": "node scripts/build-ui.cjs",
-    "test": "node --test server/*.test.cjs services/*.test.cjs scripts/*.test.cjs ui/*.test.mjs",
+    "test": "node --test desktop/*.test.cjs server/*.test.cjs services/*.test.cjs scripts/*.test.cjs ui/*.test.mjs",
     "package:win": "node scripts/package-win.cjs",
     "package:mac": "node scripts/package-mac.cjs",
     "package:all": "node scripts/package-win.cjs && node scripts/package-mac.cjs",
