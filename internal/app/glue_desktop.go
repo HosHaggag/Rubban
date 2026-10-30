@@ -2,11 +2,14 @@
 
 package app
 
-import "github.com/HosHaggag/rubban/internal/version"
+import (
+	"github.com/HosHaggag/rubban/internal/server"
+	"github.com/HosHaggag/rubban/internal/version"
+)
 
-// importShellEnv reads the login shell's PATH on macOS; replaced once the shell-environment
-// importer is merged (internal/server/shellenv.go).
-var importShellEnv = func() {}
+// importShellEnv reads the login shell's PATH on macOS (a no-op on Windows and with
+// RUBBAN_SKIP_SHELL_ENV=1); app launches do not inherit it.
+func importShellEnv() { server.ApplyShellEnvironment() }
 
 // newUpdates builds the updater; replaced once internal/updater is merged.
 func newUpdates(s *shell, exe string, packaged bool) Updates {
