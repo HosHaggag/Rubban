@@ -478,6 +478,11 @@ export function chips(map, { empty: emptyText = '' } = {}) {
 }
 export function copyButton(text, label = 'Copy') { return button(label, task(async event => { event?.stopPropagation?.(); await navigator.clipboard.writeText(typeof text === 'function' ? text() : text); toast('Copied to clipboard.'); }), 'quiet compact'); }
 export function download(filename, text, type = 'text/plain') {
+  // The desktop shell shows a native Save dialog; the web build downloads a Blob.
+  if (globalThis.rubbanDesktop?.saveFile) {
+    globalThis.rubbanDesktop.saveFile(filename, text).then(saved => { if (saved) toast('File saved.'); }, error => toast(error.message, true));
+    return;
+  }
   const url = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
   const anchor = el('a', { href: url, download: filename }); document.body.append(anchor); anchor.click(); anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
