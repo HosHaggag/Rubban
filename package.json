@@ -15,7 +15,8 @@
     "package:mac": "node scripts/package-mac.cjs",
     "package:all": "node scripts/package-win.cjs && node scripts/package-mac.cjs",
     "mcp": "node services/mcp.cjs",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:ui": "node --test ui/*.test.mjs"
   },
   "dependencies": {
     "@lydell/node-pty": "1.1.0",
