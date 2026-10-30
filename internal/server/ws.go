@@ -39,22 +39,3 @@ func sendWS(ctx context.Context, conn *websocket.Conn, v any) error {
 	}
 	return conn.Write(ctx, websocket.MessageText, data)
 }
-
-// serveWatch answers `unavailable` until the live layer exists.
-func (b *Backend) serveWatch(w http.ResponseWriter, r *http.Request) {
-	conn, err := b.acceptWS(w, r)
-	if err != nil {
-		return
-	}
-	_ = sendWS(r.Context(), conn, map[string]any{"type": "unavailable", "message": "Live updates are not available in this mode; showing a snapshot."})
-	_ = conn.Close(websocket.StatusNormalClosure, "Watch ended")
-}
-
-func (b *Backend) serveTerminal(w http.ResponseWriter, r *http.Request) {
-	conn, err := b.acceptWS(w, r)
-	if err != nil {
-		return
-	}
-	_ = sendWS(r.Context(), conn, map[string]any{"type": "error", "error": "The terminal is not available in this build yet."})
-	_ = conn.Close(websocket.StatusInternalError, "Terminal unavailable")
-}
