@@ -109,7 +109,10 @@ func TestDesktopRoutesAbsentInWebMode(t *testing.T) {
 	if f.get("/api/desktop/updates").Status != 404 || f.post("/api/desktop/open-external", map[string]any{"url": "https://x.y"}).Status != 404 {
 		t.Fatal("desktop routes exist in web mode")
 	}
-	r, _ := http.Get(f.conn.URL + "/desktop-bridge.js")
+	r, err := http.Get(f.conn.URL + "/desktop-bridge.js")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 || r.ContentLength != 0 {
 		t.Fatalf("bridge in web mode: %d len %d", r.StatusCode, r.ContentLength)
@@ -124,7 +127,10 @@ func TestDesktopSmokeRoutesAndBridge(t *testing.T) {
 	if len(d.errors) != 1 || d.errors[0] != "boom" || d.reports[0]["title"] != "Rubban" {
 		t.Fatalf("smoke %v %v", d.errors, d.reports)
 	}
-	r, _ := http.Get(conn.URL + "/desktop-bridge.js")
+	r, err := http.Get(conn.URL + "/desktop-bridge.js")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 || !strings.Contains(r.Header.Get("Content-Type"), "javascript") {
 		t.Fatalf("bridge %d", r.StatusCode)
