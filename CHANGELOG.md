@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.1: First published build of the Go program
+
+- Everything listed under 0.12.0 below, which was not published as a release.
+- Releases are built by the manual **Build and release** workflow (Actions tab); the GitHub Actions used by it are on their current major versions.
+
 ## 0.12.0: Rubban is now one Go program
 
 - **New runtime.** Rubban is written in Go and shows its interface in the system web view (WebView2 on Windows, WebKit on macOS) through Wails, instead of Electron and Node.js. The Windows download shrinks from about 100 MB to a few megabytes plus the bundled kubectl and helm, the window opens in well under a second, and one Rubban process runs besides kubectl.
