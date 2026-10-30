@@ -13,19 +13,27 @@ $Source = (Resolve-Path $Source).Path
 if (-not (Test-Path (Join-Path $Source 'Rubban.exe'))) { throw "Rubban.exe was not found in $Source. Run this script from the extracted Rubban-<version>-Windows-x64 folder." }
 if (Get-Process -Name Rubban -ErrorAction SilentlyContinue) { throw 'Close Rubban before installing.' }
 
+# A Rubban install has Rubban.exe and either the current layout (a VERSION file next to it) or the
+# Electron layout of 0.11 and earlier (resources\app\package.json). Updating from 0.11 uses this.
+function Test-RubbanInstall([string]$Folder) {
+  if (-not (Test-Path (Join-Path $Folder 'Rubban.exe'))) { return $false }
+  return (Test-Path (Join-Path $Folder 'VERSION')) -or (Test-Path (Join-Path $Folder 'resources\app\package.json'))
+}
+
 # Keep CLIs bundled by the existing install when this build does not bring its own.
-$tools = Join-Path $Destination 'resources\app\tools'
+$tools = Join-Path $Destination 'tools'
+$oldTools = Join-Path $Destination 'resources\app\tools'
 $keepTools = $null
-if (-not (Test-Path (Join-Path $Source 'resources\app\tools'))) {
-  if (Test-Path $tools) {
+if (-not (Test-Path (Join-Path $Source 'tools'))) {
+  $existing = @($tools, $oldTools) | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if ($existing) {
     $keepTools = Join-Path $env:TEMP ("rubban-tools-" + [guid]::NewGuid())
-    Copy-Item $tools $keepTools -Recurse
+    Copy-Item $existing $keepTools -Recurse
   }
 }
 
 if (Test-Path $Destination) {
-  $isRubban = Test-Path (Join-Path $Destination 'Rubban.exe')
-  if ((Get-ChildItem $Destination -Force | Select-Object -First 1) -and -not $isRubban) { throw "$Destination is not empty and is not a Rubban install. Choose another -Destination." }
+  if ((Get-ChildItem $Destination -Force | Select-Object -First 1) -and -not (Test-RubbanInstall $Destination)) { throw "$Destination is not empty and is not a Rubban install. Choose another -Destination." }
   Remove-Item (Join-Path $Destination '*') -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
@@ -49,6 +57,6 @@ foreach ($link in $targets) {
   $shortcut.Save()
 }
 
-$version = (Get-Content (Join-Path $Destination 'resources\app\package.json') -Raw | ConvertFrom-Json).version
+$version = (Get-Content (Join-Path $Destination 'VERSION') -Raw).Trim()
 Write-Host "Rubban $version installed to $Destination (settings: $data)"
 if (-not $NoStart) { Start-Process $exe }

@@ -1,38 +1,16 @@
 {
-  "name": "rubban",
-  "productName": "Rubban",
-  "version": "0.11.0",
-  "description": "Independent Kubernetes desktop workbench and self-hosted services",
+  "name": "rubban-ui-tools",
   "private": true,
+  "description": "Development-only tooling for the Rubban web UI: ESLint and the browser-module unit tests. Nothing here is needed to build or run Rubban.",
   "license": "MIT",
-  "main": "desktop/main.cjs",
   "scripts": {
-    "start": "electron .",
-    "web": "node server/start.cjs",
-    "build:ui": "node scripts/build-ui.cjs",
-    "test": "node --test desktop/*.test.cjs server/*.test.cjs services/*.test.cjs scripts/*.test.cjs ui/*.test.mjs",
-    "package:win": "node scripts/package-win.cjs",
-    "package:mac": "node scripts/package-mac.cjs",
-    "package:all": "node scripts/package-win.cjs && node scripts/package-mac.cjs",
-    "mcp": "node services/mcp.cjs",
-    "lint": "eslint ."
-  },
-  "dependencies": {
-    "@lydell/node-pty": "1.1.0",
-    "@xterm/addon-fit": "0.11.0",
-    "@xterm/xterm": "6.0.0",
-    "ws": "8.22.0",
-    "yaml": "2.9.1"
+    "lint": "eslint .",
+    "test:ui": "node --test ui/*.test.mjs"
   },
   "devDependencies": {
-    "@electron/packager": "20.3.0",
     "@eslint/js": "9.39.5",
-    "electron": "44.9.1",
-    "esbuild": "0.28.2",
     "eslint": "9.39.5",
-    "globals": "16.5.0"
-  },
-  "engines": {
-    "node": ">=24.11.0"
+    "globals": "16.5.0",
+    "yaml": "2.9.1"
   }
 }

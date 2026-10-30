@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; frame-src http://127.0.0.1:*; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'">
   <meta name="rubban-token" content="__RUBBAN_TOKEN__">
   <title>Rubban · رُبّان</title>
-  <link rel="stylesheet" href="/node_modules/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="/xterm.css">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -54,6 +54,7 @@
   <dialog id="command-dialog" class="command-dialog"><form method="dialog"><div class="command-input"><span class="search-icon" data-icon="search"></span><input id="command-search" autocomplete="off" placeholder="Go to a view or resource…" aria-label="Search commands"><button class="quiet compact">Esc</button></div></form><div id="command-results"></div><div class="command-footer">Navigate your workspace <kbd>Enter</kbd> to open</div></dialog>
   <dialog id="action-dialog" class="action-dialog"><div id="action-content"></div></dialog>
   <div id="toast-region" aria-live="polite"></div>
+  <script src="/desktop-bridge.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

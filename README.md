@@ -77,7 +77,7 @@ Open a **new** PowerShell window and check that `kubectl get ns` works.
 
 ### 2.2 Install Rubban
 
-1. Get `Rubban-<version>-Windows-x64.zip`. You can build it yourself with `npm run package:win` (see [section 5](#5-build-from-source-wsl-linux-macos-or-windows)).
+1. Get `Rubban-<version>-Windows-x64.zip`. You can build it yourself with `go run ./cmd/buildtool package --os windows` (see [section 5](#5-build-from-source-wsl-linux-macos-or-windows)).
 2. Right-click the zip, choose **Properties**, tick **Unblock** and press **OK**. Then choose **Extract All…**.
 3. In the extracted folder, run:
 
@@ -201,23 +201,24 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 
 ## 5. Build from source (WSL, Linux, macOS or Windows)
 
-Every release zip, for both Windows and macOS, can be built from a Linux or WSL checkout.
+Rubban is one Go program. The Windows zip can be built on Linux, WSL, macOS or Windows. The macOS zips must be built on a Mac, because the desktop shell links against Cocoa.
 
 ### 5.1 Prerequisites
 
-- **Node.js 24.11 or newer**, with npm. With [nvm](https://github.com/nvm-sh/nvm): `nvm install 24 && nvm use 24`.
-- Nothing else is needed to package: the zips are written by the build itself (no `zip` command). Building macOS zips works on macOS and Linux/WSL, not on Windows.
+- **Go 1.26 or newer** (`go version`).
+- **macOS builds:** the Xcode command line tools (`xcode-select --install`).
+- **Windows builds:** nothing else. The desktop shell uses the WebView2 runtime that Windows 11 and up-to-date Windows 10 already have.
+- **Linux desktop builds** (only to run the window on Linux, which is not a supported target): `libwebkit2gtk-4.1-dev` and `libgtk-3-dev`. `rubban web` needs none of this.
 - **Optional:** `rcodesign`, to sign macOS builds ad hoc when building on Linux/WSL: `cargo install apple-codesign`. Without it, the macOS zip is unsigned and `Install-Rubban.command` signs the app on the Mac.
-- **Network access** to the npm registry and to GitHub releases. The Electron runtime for each target platform is downloaded once and then cached in `~/.cache/electron`.
+- **Optional, for the UI unit tests and ESLint only:** Node.js 24 (`npm install`, then `npm run lint` and `npm run test:ui`). Nothing in the build or at run time uses Node.
 
 ### 5.2 Run and test
 
 ```bash
 cd path/to/rubban
-npm ci            # install dependencies from package-lock.json
-npm test          # unit tests (Node test runner)
-npm start         # run the desktop app (in WSL this needs WSLg, as on Windows 11)
-npm run web       # or serve the same UI on a loopback URL and open it in a browser
+go test ./...                              # unit tests (add -tags desktop on Windows or macOS to include the shell)
+go run ./cmd/rubban web                    # serve the UI on a loopback URL and open it in a browser
+go run -tags desktop ./cmd/rubban          # run the desktop app (Windows or macOS; in WSL this needs WSLg)
 ```
 
 When run from source, settings go to `./data`. Use `RUBBAN_DATA_DIR=/some/path` to choose another folder.
@@ -225,13 +226,12 @@ When run from source, settings go to `./data`. Use `RUBBAN_DATA_DIR=/some/path` 
 ### 5.3 Build release zips
 
 ```bash
-npm run package:win                      # release/Rubban-<version>-Windows-x64.zip
-npm run package:mac                      # release/Rubban-<version>-macOS-arm64.zip and -x64.zip
-npm run package:mac -- --arch=arm64      # one macOS architecture only
-npm run package:all                      # all of the above
+go run ./cmd/buildtool package --os windows                  # release/Rubban-<version>-Windows-x64.zip
+go run ./cmd/buildtool package --os darwin --arch arm64      # release/Rubban-<version>-macOS-arm64.zip (on a Mac)
+go run ./cmd/buildtool package --os darwin --arch x64        # release/Rubban-<version>-macOS-x64.zip (on a Mac)
 ```
 
-Building all three takes a few minutes and about 2 GB of free disk space (in `build/` and `release/`). Each zip holds the application, its installer (`Install-Rubban.ps1` or `Install-Rubban.command`) and this README. Builds made on a Mac are signed ad hoc with `codesign`; builds made on Linux/WSL use `rcodesign` when it is installed.
+The Windows zip holds `Rubban.exe`, `rubban-cli.exe` (for `web` and `mcp`), `VERSION`, `Install-Rubban.ps1`, this README, the licence files and `tools/` when kubectl and helm are bundled. The macOS zip holds `Rubban.app`, `Install-Rubban.command` and this README. Builds made on a Mac are signed ad hoc with `codesign`; builds made on Linux/WSL use `rcodesign` when it is installed.
 
 To copy the zips from WSL to your Windows Downloads folder:
 
@@ -241,25 +241,25 @@ cp release/*.zip /mnt/c/Users/$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d
 
 ### Updates
 
-Packaged builds check `github.com/HosHaggag/Rubban/releases/latest/download/latest.json` shortly after start and every six hours (Settings › Updates, or **Help › Check for updates…**). The app downloads only from GitHub over HTTPS, verifies the SHA-256 from `latest.json`, and installs through a small helper (`desktop/update/apply-update.ps1` on Windows, `apply-update.sh` on macOS) that runs after Rubban exits, so no installer window or browser download is involved. The helper restores the previous version if the install fails. Releases are not code-signed yet, so the checksum is the integrity check.
+Packaged builds check `github.com/HosHaggag/Rubban/releases/latest/download/latest.json` shortly after start and every six hours (Settings › Updates, or **Help › Check for updates…**). The app downloads only from GitHub over HTTPS, verifies the SHA-256 from `latest.json`, and installs through a small helper (`apply-update.ps1` on Windows, `apply-update.sh` on macOS, both carried inside the Rubban binary) that runs after Rubban exits, so no installer window or browser download is involved. The helper restores the previous version if the install fails. Releases are not code-signed yet, so the checksum is the integrity check.
 
 ### Releasing (maintainers)
 
-Releases are built by GitHub Actions when a tag `v<version>` is pushed. The workflow refuses a tag that does not match `package.json` or has no `## <version>` section in `CHANGELOG.md`, bundles the official kubectl and helm (versions in `scripts/tool-versions.json`, checksums verified), builds the Windows and macOS zips and publishes them with `SHA256SUMS.txt`, `latest.json` and the changelog section as the release notes.
+Releases are built by GitHub Actions when a tag `v<version>` is pushed. The workflow refuses a tag that does not match the `VERSION` file or has no `## <version>` section in `CHANGELOG.md`, bundles the official kubectl and helm (versions in `cmd/buildtool/tool-versions.json`, checksums verified), builds the Windows and macOS zips and publishes them with `SHA256SUMS.txt`, `latest.json` and the changelog section as the release notes.
 
 ```bash
-# 1. add "## 0.11.1: …" to CHANGELOG.md and commit it
-node scripts/release.cjs patch     # bumps package.json, commits and tags v0.11.1
-git push origin main --tags        # the Release workflow does the rest
+# 1. add "## 0.12.1: …" to CHANGELOG.md and commit it
+go run ./cmd/buildtool release patch     # bumps VERSION, commits and tags v0.12.1
+git push origin main --tags              # the Release workflow does the rest
 ```
 
 ### 5.4 Bundle kubectl and helm (optional)
 
-Point the build at binaries for the *target* platform. They are copied into `resources/app/tools`, with their SHA-256 checksums recorded in `tool-provenance.json`.
+Point the build at binaries for the *target* platform. They are copied into `tools/` next to `Rubban.exe`, or into `Rubban.app/Contents/Resources/tools`, with their SHA-256 checksums recorded in `tool-provenance.json`. `go run ./cmd/buildtool fetch-tools win32 x64 tools-dl` downloads checksum-verified copies from the official sources.
 
 ```bash
-RUBBAN_BUNDLE_KUBECTL=~/dl/windows/kubectl.exe RUBBAN_BUNDLE_HELM=~/dl/windows/helm.exe npm run package:win
-RUBBAN_BUNDLE_KUBECTL=~/dl/darwin-arm64/kubectl RUBBAN_BUNDLE_HELM=~/dl/darwin-arm64/helm npm run package:mac -- --arch=arm64
+RUBBAN_BUNDLE_KUBECTL=~/dl/windows/kubectl.exe RUBBAN_BUNDLE_HELM=~/dl/windows/helm.exe go run ./cmd/buildtool package --os windows
+RUBBAN_BUNDLE_KUBECTL=~/dl/darwin-arm64/kubectl RUBBAN_BUNDLE_HELM=~/dl/darwin-arm64/helm go run ./cmd/buildtool package --os darwin --arch arm64
 ```
 
 Rubban uses bundled tools first and falls back to the ones on PATH.
@@ -269,11 +269,11 @@ Rubban uses bundled tools first and falls back to the ones on PATH.
 | Variable | Effect |
 |---|---|
 | `RUBBAN_DATA_DIR` | Folder for settings and session files |
+| `RUBBAN_PORT` | `rubban web` only: the loopback port to listen on (default: chosen by the system) |
 | `RUBBAN_SKIP_SHELL_ENV=1` | macOS/Linux: do not read the login shell's environment at start-up |
 | `RUBBAN_DISABLE_PTY=1` | Use the simple pipe terminal instead of a native pseudo-terminal |
 | `RUBBAN_DISABLE_UPDATES=1` | Turn off the update check and installer |
-| `RUBBAN_RELEASE_DIR` | Where `package:*` writes the release zips (default `release/`) |
-| `KUBECONFIG` | Standard kubeconfig search path, honoured as usual |
+| `RUBBAN_RELEASE_DIR` | Where `buildtool package` writes the release zips (default `release/`) |
 
 ---
 
@@ -310,7 +310,8 @@ Argo CD actions do not need an Argo CD login. Rubban updates the Application obj
 This folder holds:
 
 - `preferences.json`: settings, pinned clusters and Prometheus choices;
-- the window profile;
+- `port`: the loopback port Rubban reuses on each launch, so settings the page keeps in the browser (column widths, dock height, log options) survive restarts;
+- `update-state.json` and `updates/`: the last update check and downloaded updates;
 - `connection.json`: the local API address and token, written while Rubban runs, for the MCP bridge;
 - `kubeconfigs/`: private copies of kubeconfigs you imported (mode 0600), one file each plus `index.json`;
 - `logs/rubban.log`: errors and start-up problems as JSON lines (rotated at 5 MB, three old files kept). Open it from **Help › Open log folder**.
@@ -333,7 +334,7 @@ Rubban never writes to your own kubeconfig; imported kubeconfigs are separate co
 | RabbitMQ: the console asks for a login | The initial login could not be read (see the message under the login bar), or the user was changed after install. Sign in with the right credentials. |
 | macOS: "Rubban is damaged" / "can't be opened" / "killed" | Run `Install-Rubban.command` again, or the three commands in [3.2](#32-install-rubban). |
 | Windows: "Windows protected your PC" | Choose **More info**, then **Run anyway**. Rubban is not code-signed. |
-| The terminal says "command-pipe fallback" | The native terminal module could not load. Full-screen programs (vim, top) will not work there. Reinstall Rubban, or use `RUBBAN_DISABLE_PTY=1` deliberately. |
+| The terminal says "command-pipe fallback" | A pseudo-terminal could not be created. Full-screen programs (vim, top) will not work there. On Windows this needs Windows 10 version 1809 or later; otherwise you set `RUBBAN_DISABLE_PTY=1` deliberately. |
 | A local terminal for a cluster ignores your aliases | This is intentional. A cluster-scoped terminal skips shell startup files so a profile cannot switch `KUBECONFIG`. A terminal opened with no cluster selected loads your normal profile. |
 | Something went wrong and you want to report it | Open **Help › Open log folder** and attach `rubban.log`. It contains no secret values. |
 | Long names are cut off with `…` | Columns are sized to fit the panel. Hover a cell to see its full value, widen the window, or hide columns you do not need with **Columns**. |
@@ -344,26 +345,26 @@ Rubban never writes to your own kubeconfig; imported kubeconfigs are separate co
 
 ## 9. MCP bridge
 
-`services/` contains a read-only **MCP bridge** that lets an AI tool read clusters through a running Rubban.
-
-Setup details are in [services/README.md](services/README.md).
-
-To run the MCP bridge with the Node.js built into Rubban (no separate Node install needed):
+`rubban mcp` is a read-only **MCP bridge** (stdio transport) that lets an AI tool read clusters through a running Rubban. Start Rubban first: the bridge connects to the local API through the `connection.json` that Rubban writes to its data folder ([section 7](#7-where-rubban-keeps-its-data)). Register one of these commands with your MCP client:
 
 ```bash
 # macOS
-ELECTRON_RUN_AS_NODE=1 /Applications/Rubban.app/Contents/MacOS/Rubban \
-  /Applications/Rubban.app/Contents/Resources/app/services/mcp.cjs \
-  --connection-file "$HOME/Library/Application Support/Rubban/connection.json"
+/Applications/Rubban.app/Contents/MacOS/Rubban mcp --connection-file "$HOME/Library/Application Support/Rubban/connection.json"
 ```
 
 ```powershell
 # Windows
-$env:ELECTRON_RUN_AS_NODE = '1'
-& "$env:USERPROFILE\Rubban\Rubban-Windows\Rubban.exe" "$env:USERPROFILE\Rubban\Rubban-Windows\resources\app\services\mcp.cjs" --connection-file "$env:USERPROFILE\Rubban\Rubban-Data\connection.json"
+& "$env:USERPROFILE\Rubban\Rubban-Windows\rubban-cli.exe" mcp --connection-file "$env:USERPROFILE\Rubban\Rubban-Data\connection.json"
 ```
 
-With Node.js 24 installed you can also run `node services/mcp.cjs …` from the source folder.
+```bash
+# From the source folder, with `go run ./cmd/rubban web` or the desktop app running
+go run ./cmd/rubban mcp --connection-file ./data/connection.json
+```
+
+`RUBBAN_CONNECTION_FILE` can replace the flag, and `RUBBAN_API_URL` (`http://127.0.0.1:<port>/`) with `RUBBAN_API_TOKEN` override the file. Only the literal `127.0.0.1` host is accepted; on macOS and Linux the connection file must not be readable by other users. A stale file from a previous Rubban session cannot authenticate to a new one.
+
+The bridge offers four tools, all read-only: `list_contexts`, `list_resources` (`context`, `resource`, optional `namespace`), `resource_details` (plus `name`) and `metrics` (`context`, optional `namespace`). Secrets are not among the resources it can list. Returned objects may contain application configuration, so use a Kubernetes identity scoped to what the AI tool should see. It implements the MCP 2025-06-18 stdio transport and tools specification and also negotiates with 2024-11-05 and 2025-03-26 clients; there are no prompts, resources, subscriptions or remote transport. Diagnostics go to stderr; stdout carries only protocol messages.
 
 ---
 
@@ -381,12 +382,16 @@ With Node.js 24 installed you can also run `node services/mcp.cjs …` from the 
 ## 11. Project layout
 
 ```
-desktop/   Electron main process and preload (window, menus, macOS shell environment)
-server/    Local backend: Kubernetes reads and actions, live watches, metrics, Argo CD, RabbitMQ
-ui/        The interface (plain ES modules, no build step) and its styles
-services/  MCP bridge
-scripts/   Packaging (package-win.cjs, package-mac.cjs) and installers
-assets/    Icons (.ico for Windows, .icns for macOS, .svg/.png)
+cmd/rubban/        The program: desktop app (no arguments), `web` server and `mcp` bridge
+cmd/buildtool/     Packaging, tool download, manifest, check-version and release commands (go run ./cmd/buildtool)
+internal/app/      Desktop shell: window, menus, dialogs, theme and the updates bridge (Wails, built with -tags desktop)
+internal/server/   Local backend: Kubernetes reads and actions, metrics, Helm, Argo CD, RabbitMQ, logs and terminals
+internal/live/     kubectl proxy pool, API discovery and shared live watches
+internal/updater/  In-app updater and its helper scripts
+internal/mcp/      MCP bridge
+ui/                The interface (plain ES modules, no build step) and its styles, embedded into the binary
+scripts/           Installers (Install-Rubban.ps1, Install-Rubban.command)
+assets/            Icons (.ico for Windows, .icns for macOS, .svg/.png)
 ```
 
 Licence: MIT (see [LICENSE](LICENSE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)).

@@ -100,6 +100,13 @@ export function popupMenu(anchor, items) {
     if (item.checkbox) { menu.append(el('label', { class: 'menu-item check' }, el('input', { type: 'checkbox', checked: item.checked, onchange: event => item.onChange(event.target.checked) }), item.label)); continue; }
     menu.append(el('button', { type: 'button', class: `menu-item${item.danger ? ' danger' : ''}`, role: 'menuitem', disabled: item.disabled, title: item.title || '', onclick: event => { event.stopPropagation(); closeMenus(); item.action(); } }, el('span', { class: 'menu-icon', text: item.icon || '' }), item.label));
   }
+  return popup(anchor, menu);
+}
+// Shows any node as a fixed popup next to an anchor (on the body, so panel overflow never clips
+// it); closes on outside click, Escape or window blur like the menus.
+export function popup(anchor, menu) {
+  closeMenus();
+  menu.classList.add('popup-menu');
   menu.addEventListener('mousedown', event => event.stopPropagation());
   document.body.append(menu); openMenu = menu;
   const rect = anchor.getBoundingClientRect(); const size = menu.getBoundingClientRect();
@@ -471,6 +478,11 @@ export function chips(map, { empty: emptyText = '' } = {}) {
 }
 export function copyButton(text, label = 'Copy') { return button(label, task(async event => { event?.stopPropagation?.(); await navigator.clipboard.writeText(typeof text === 'function' ? text() : text); toast('Copied to clipboard.'); }), 'quiet compact'); }
 export function download(filename, text, type = 'text/plain') {
+  // The desktop shell shows a native Save dialog; the web build downloads a Blob.
+  if (globalThis.rubbanDesktop?.saveFile) {
+    globalThis.rubbanDesktop.saveFile(filename, text).then(saved => { if (saved) toast('File saved.'); }, error => toast(error.message, true));
+    return;
+  }
   const url = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
   const anchor = el('a', { href: url, download: filename }); document.body.append(anchor); anchor.click(); anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);

@@ -9,26 +9,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@v5
         with:
-          node-version: 24
-      - run: node scripts/check-version.cjs
+          go-version-file: go.mod
+      - run: go run ./cmd/buildtool check-version
   windows:
     needs: check
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@v5
         with:
-          node-version: 24
-          cache: npm
-      - uses: actions/cache@v4
-        with:
-          path: ~/AppData/Local/electron/Cache
-          key: electron-win-${{ hashFiles('package-lock.json') }}
-      - run: npm ci --no-audit --no-fund
-      - run: node scripts/fetch-tools.cjs win32 x64 tools-dl
-      - run: npm run package:win
+          go-version-file: go.mod
+      - run: go run ./cmd/buildtool fetch-tools win32 x64 tools-dl
+      - run: go run ./cmd/buildtool package --os windows
         env:
           RUBBAN_BUNDLE_KUBECTL: tools-dl/kubectl.exe
           RUBBAN_BUNDLE_HELM: tools-dl/helm.exe
@@ -62,23 +56,17 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@v5
         with:
-          node-version: 24
-          cache: npm
-      - uses: actions/cache@v4
-        with:
-          path: ~/Library/Caches/electron
-          key: electron-mac-${{ hashFiles('package-lock.json') }}
-      - run: npm ci --no-audit --no-fund
+          go-version-file: go.mod
       - run: |
-          node scripts/fetch-tools.cjs darwin arm64 tools-arm64
-          node scripts/fetch-tools.cjs darwin x64 tools-x64
-      - run: npm run package:mac -- --arch=arm64
+          go run ./cmd/buildtool fetch-tools darwin arm64 tools-arm64
+          go run ./cmd/buildtool fetch-tools darwin x64 tools-x64
+      - run: go run ./cmd/buildtool package --os darwin --arch arm64
         env:
           RUBBAN_BUNDLE_KUBECTL: tools-arm64/kubectl
           RUBBAN_BUNDLE_HELM: tools-arm64/helm
-      - run: npm run package:mac -- --arch=x64
+      - run: go run ./cmd/buildtool package --os darwin --arch x64
         env:
           RUBBAN_BUNDLE_KUBECTL: tools-x64/kubectl
           RUBBAN_BUNDLE_HELM: tools-x64/helm
@@ -108,16 +96,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@v5
         with:
-          node-version: 24
+          go-version-file: go.mod
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
           path: release
           merge-multiple: true
-      - run: node scripts/write-manifest.cjs release
-      - run: node scripts/release-notes.cjs "${GITHUB_REF_NAME#v}" > notes.md
+      - run: go run ./cmd/buildtool write-manifest release
+      - run: go run ./cmd/buildtool release-notes "${GITHUB_REF_NAME#v}" > notes.md
       - uses: softprops/action-gh-release@v2
         with:
           files: release/*
