@@ -41,13 +41,13 @@ jobs:
           $result = Get-Content smoke-out/desktop-smoke.json -Raw | ConvertFrom-Json
           if ($result.rendererErrors.Count -ne 0) { throw "Renderer errors: $($result.rendererErrors -join '; ')" }
           Write-Host "Smoke test passed: '$($result.title)', $($result.bodyLength) characters of page text"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke-windows
           path: smoke-out
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: release/*.zip
@@ -81,13 +81,13 @@ jobs:
           output=$(/tmp/smoke/*/Rubban.app/Contents/MacOS/Rubban --smoke-test)
           echo "$output"
           echo "$output" | grep -q '"rendererErrors":\[\]'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke-macos
           path: /tmp/smoke-out
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-macos
           path: release/*.zip
