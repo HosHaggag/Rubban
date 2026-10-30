@@ -18,7 +18,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - id: version
@@ -42,7 +42,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - run: go run ./cmd/buildtool fetch-tools win32 x64 tools-dl
@@ -65,13 +65,13 @@ jobs:
           $result = Get-Content smoke-out/desktop-smoke.json -Raw | ConvertFrom-Json
           if ($result.rendererErrors.Count -ne 0) { throw "Renderer errors: $($result.rendererErrors -join '; ')" }
           Write-Host "Smoke test passed: '$($result.title)', $($result.bodyLength) characters of page text"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke-windows
           path: smoke-out
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: release/*.zip
@@ -80,7 +80,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - run: |
@@ -105,13 +105,13 @@ jobs:
           output=$(/tmp/smoke/*/Rubban.app/Contents/MacOS/Rubban --smoke-test)
           echo "$output"
           echo "$output" | grep -q '"rendererErrors":\[\]'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke-macos
           path: /tmp/smoke-out
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-macos
           path: release/*.zip
@@ -121,17 +121,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release
           merge-multiple: true
       - run: go run ./cmd/buildtool write-manifest release
       - run: go run ./cmd/buildtool release-notes "${{ needs.check.outputs.version }}" > notes.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.check.outputs.version }}
           name: Rubban ${{ needs.check.outputs.version }}
