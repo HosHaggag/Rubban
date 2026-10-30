@@ -68,11 +68,11 @@ Acceptance: `npm test` passes, `npm run lint` passes, `grep -rn -iE "codex|sandb
 
 ### 0.3 Status after the first pass (2026-10-30)
 
-Steps 1–8 were applied (see the `0.11.0` section of `CHANGELOG.md`). Still open from this workstream:
+Steps 1–8 were applied (see the `0.11.0` section of `CHANGELOG.md`) and verified on Windows from a fresh `npm ci`: `npm run lint` clean, `npm test` 68 passed / 0 failed / 1 skipped (the Unix-only ZIP permissions test). Notes for later workstreams:
 
-- `npm run lint` reports 19 pre-existing errors (unused variables in `ui/app.js`, `ui/details.js`, `server/live.test.cjs`, `scripts/*`; `no-control-regex` in `services/mcp.cjs` and `ui/details.js`; `no-empty` in `server/start.cjs`; `no-useless-escape` in `ui/format.js`). Fix each one properly (remove the unused binding, add `// eslint-disable-next-line no-control-regex` only where the control characters are intentional, give the empty catch a comment) — do not relax the config.
-- `server/core.test.cjs` "independent preferences are persisted atomically…" sometimes fails on Windows with `ENOTEMPTY` while removing the fixture's temp `data` directory. Make the fixture's cleanup retry (`fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })`).
-- Workstream 5 must run `npm ci` in CI; the lockfile must be regenerated whenever `package.json` changes.
+- Test fixtures delete temp directories with `fs.rm(dir, { recursive: true })`; on Windows that can hit `ENOTEMPTY` when a file is still being released. If it ever shows up in CI, add `maxRetries: 5, retryDelay: 100` to those calls rather than retrying the job.
+- Workstream 5 must run `npm ci` in CI; regenerate `package-lock.json` whenever `package.json` changes or `npm ci` refuses to install.
+- `npm ci`/`npm install` cannot modify `node_modules/electron` while a Rubban built from that folder is running (EPERM/EBUSY). Close the app or verify from a second clone.
 
 ---
 
