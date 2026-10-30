@@ -67,7 +67,7 @@ export function pageContext(usage) {
 
 // ---- Cell renderers ---------------------------------------------------------------------------
 const muted = text => el('span', { class: 'muted', text });
-// Related objects in a row (namespace, owner, node) are links that open that object, like Lens.
+// Related objects in a row (namespace, owner, node) are links that open that object.
 const openRef = (kind, name, namespace = '', apiVersion = '') => hooks.showResource?.({ kind, apiVersion, metadata: { name, namespace } }, resourceForKind(kind, apiVersion));
 export const refCell = (kind, name, namespace = '', apiVersion = '') => (name ? link(name, () => openRef(kind, name, namespace, apiVersion), `Open ${kind} ${name}`) : muted('—'));
 const levelOf = fraction => (fraction >= 0.9 ? 'bad' : fraction >= 0.75 ? 'warn' : 'good');

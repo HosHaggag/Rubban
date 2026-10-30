@@ -1,13 +1,12 @@
 'use strict';
-require('../server/env-compat.cjs');
 // macOS (and Linux desktop) launches do not inherit the login shell's PATH; read it once.
 if (process.platform !== 'win32') require('../server/shell-env.cjs').importShellEnvironment();
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session } = require('electron');
 const path = require('node:path');
-const os = require('node:os');
 const fs = require('node:fs');
 const { createBackend } = require('../server/core.cjs');
 const { createExtras } = require('../server/extras.cjs');
+const { createLogger } = require('../server/log.cjs');
 
 app.setName('Rubban');
 const root = path.resolve(__dirname, '..');
@@ -16,20 +15,17 @@ const portableRoot = app.isPackaged ? path.dirname(process.execPath) : root;
 // replaced on update, so data lives in ~/Library/Application Support/Rubban.
 const packagedData = () => (process.platform === 'win32' ? path.join(path.dirname(portableRoot), 'Rubban-Data') : path.join(app.getPath('appData'), 'Rubban'));
 let dataDir = process.env.RUBBAN_DATA_DIR || (app.isPackaged ? packagedData() : path.join(portableRoot, 'data'));
-// First launch under the Rubban name: copy settings from the earlier Marsad or Prism data folder
-// (copied, not moved, so an older version still finds its own).
-if (!process.env.RUBBAN_DATA_DIR && app.isPackaged && !fs.existsSync(dataDir)) {
-  const legacyNames = ['Marsad', 'Prism'];
-  const candidates = process.platform === 'win32'
-    ? legacyNames.flatMap(name => [path.join(path.dirname(portableRoot), `${name}-Data`), path.join(os.homedir(), name, `${name}-Data`)])
-    : legacyNames.map(name => path.join(app.getPath('appData'), name));
-  const legacy = candidates.find(candidate => fs.existsSync(candidate));
-  if (legacy) {
-    try { fs.cpSync(legacy, dataDir, { recursive: true, filter: source => !/[\\/](?:connection\.json|SingletonLock|SingletonCookie|SingletonSocket)$/.test(source) }); }
-    catch { /* Start with fresh settings rather than fail. */ }
-  }
-}
 fs.mkdirSync(dataDir, { recursive: true });
+const logger = createLogger(path.join(dataDir, 'logs'));
+let crashDialogShown = false;
+const crashed = (kind, error) => {
+  logger.error(error instanceof Error ? error : new Error(String(error)), { kind });
+  if (crashDialogShown || smoke) return;
+  crashDialogShown = true;
+  dialog.showErrorBox('Rubban hit an unexpected error', `${error?.message || error}\n\nDetails are in ${logger.file}`);
+};
+process.on('uncaughtException', error => crashed('uncaughtException', error));
+process.on('unhandledRejection', reason => crashed('unhandledRejection', reason));
 app.setPath('userData', path.join(dataDir, 'desktop-profile'));
 app.setPath('sessionData', path.join(dataDir, 'desktop-profile'));
 app.setAppUserModelId('dev.rubban.desktop');
@@ -46,7 +42,7 @@ async function start() {
   // Bundled CLIs (tools/kubectl[.exe], tools/helm[.exe]) win over PATH when they are present.
   const bundledTools = path.join(root, 'tools');
   const bundled = name => { const file = path.join(bundledTools, process.platform === 'win32' ? `${name}.exe` : name); return fs.existsSync(file) ? file : undefined; };
-  backend = createBackend({ dataDir, extras: createExtras(), kubectlPath: bundled('kubectl'), helmPath: bundled('helm') });
+  backend = createBackend({ dataDir, logger, extras: createExtras(), kubectlPath: bundled('kubectl'), helmPath: bundled('helm') });
   connection = await backend.start();
   fs.writeFileSync(path.join(dataDir, 'connection.json'), JSON.stringify({ ...connection, pid: process.pid }, null, 2), { mode: 0o600 });
   // Deny every permission except clipboard writes from Rubban's own page (Copy buttons).
@@ -74,7 +70,7 @@ async function start() {
     if (event.sender !== window.webContents || new URL(event.senderFrame.url).origin !== allowed) throw new Error('Invalid sender.');
     await openExternalLink(target);
   });
-  const about = () => dialog.showMessageBox(window, { title: 'Rubban', message: `Rubban ${app.getVersion()}`, detail: 'An independent Kubernetes workbench. See FEATURE-PARITY.md for implementation and validation coverage.' });
+  const about = () => dialog.showMessageBox(window, { title: 'Rubban', message: `Rubban ${app.getVersion()}`, detail: 'An independent Kubernetes workbench.' });
   const mac = process.platform === 'darwin';
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Rubban', submenu: [
@@ -85,12 +81,12 @@ async function start() {
     { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, { label: 'Developer tools', accelerator: 'CmdOrCtrl+Shift+I', click: () => window.webContents.toggleDevTools() }] },
     ...(mac ? [{ role: 'windowMenu' }] : []),
-    { label: 'Help', submenu: [{ label: 'About Rubban', click: about }] },
+    { label: 'Help', submenu: [{ label: 'Open log folder', click: () => shell.openPath(logger.dir) }, { label: 'About Rubban', click: about }] },
   ]));
   const rendererErrors = [];
   window.webContents.on('console-message', (_event, details, legacyMessage) => {
-    if (typeof details === 'object' && details.level === 'error') rendererErrors.push(details.message);
-    else if (details === 3) rendererErrors.push(String(legacyMessage));
+    if (typeof details === 'object' && details.level === 'error') { rendererErrors.push(details.message); logger.error(details.message, { kind: 'renderer' }); }
+    else if (details === 3) { rendererErrors.push(String(legacyMessage)); logger.error(String(legacyMessage), { kind: 'renderer' }); }
   });
   await window.loadURL(connection.url);
   if (smoke) {
@@ -104,11 +100,13 @@ async function start() {
       fs.writeFileSync(path.join(output, 'desktop-preview.png'), shot.toPNG());
     }
     console.log(JSON.stringify({ smoke: true, title: info.title, ready: info.ready, bodyLength: info.bodyLength, rendererErrors }));
+    if (rendererErrors.length) process.exitCode = 1;
     app.quit();
   }
 }
 async function fatal(error) {
   console.error(error.stack || error.message);
+  logger.error(error, { kind: 'fatal' });
   try { await backend?.close(); } catch {}
   try { fs.unlinkSync(path.join(dataDir, 'connection.json')); } catch {}
   if (!smoke) dialog.showErrorBox('Rubban could not start', error.message);

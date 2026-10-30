@@ -1,6 +1,6 @@
 // Helm: chart browser with README, versions and default values; release details with values,
 // notes, managed resources and revision history; install, upgrade, rollback and uninstall.
-import { state, hooks, $, el, button, badge, info, loading, get, post, table, dl, section, toast, task, confirmAction, modal, makeForm, output, copyButton, age, clusterQuery, empty } from './kit.js';
+import { state, hooks, $, el, button, badge, info, loading, get, post, table, dl, section, toast, task, confirmAction, modal, makeForm, copyButton, age, clusterQuery, empty } from './kit.js';
 import { renderMarkdown } from './markdown.js';
 import { resourceForKind } from './kinds.js';
 

@@ -292,7 +292,7 @@ export function table(items, columns, onRow, options = {}) {
   }
   // Column widths: measured once from the rows on screen, then fixed, so scrolling a windowed list
   // never shifts columns; when the table is wider than its panel the long text columns are
-  // narrowed (with an ellipsis) so every column stays visible, as in Lens.
+  // narrowed (with an ellipsis) so every column stays visible.
   let fitted = '';
   function applyWidths(widths) {
     const cells = [...thead.rows[0].cells];
@@ -365,7 +365,7 @@ export function table(items, columns, onRow, options = {}) {
     const nameAt = visibleColumns().findIndex(column => String(column.class || '').split(' ').includes('name'));
     const nameCell = nameAt >= 0 ? nameAt + (selectable ? 1 : 0) : -1;
     if (total <= available) {
-      // Spare room goes to the name column, like Lens.
+      // Spare room goes to the name column.
       widths[nameCell >= 0 ? nameCell : 0] += available - total;
     } else {
       // The name column keeps up to a third of the width; other long columns give way first.

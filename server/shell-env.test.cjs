@@ -30,11 +30,3 @@ test('a broken or slow shell still adds the usual tool folders; Windows is untou
   assert.deepEqual(parseOutput('no marker'), {});
   assert.equal(mergePath('/a:/b', '/b:/c', ''), '/a:/b:/c');
 });
-
-test('MARSAD_* and PRISM_* variables from earlier names still configure Rubban', () => {
-  const env = { MARSAD_DATA_DIR: '/from/marsad', PRISM_DATA_DIR: '/from/prism', PRISM_HUB_PORT: '4521', RUBBAN_KUBECTL: '/new', MARSAD_KUBECTL: '/old' };
-  // A fresh module scope checks startup behavior without mutating this test process's environment.
-  const source = require('node:fs').readFileSync(require.resolve('./env-compat.cjs'), 'utf8');
-  require('node:vm').runInNewContext(source, { process: { env }, module: { exports: {} } });
-  assert.deepEqual([env.RUBBAN_DATA_DIR, env.RUBBAN_HUB_PORT, env.RUBBAN_KUBECTL], ['/from/marsad', '4521', '/new']);
-});

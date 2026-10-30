@@ -1,11 +1,11 @@
 // Per-kind detail panels for the resource drawer: overview sections, metrics tab specs and
 // action buttons. Data comes straight from the Kubernetes objects and the live usage engine.
-import { state, hooks, el, button, badge, info, loading, mini, get, post, table, dl, link, chips, section, age, dateText, statusOf, liveKey, task, toast, confirmAction, makeForm, modal, output, copyButton, targetOf } from './kit.js';
+import { state, hooks, el, button, badge, info, loading, get, post, table, dl, link, chips, section, age, dateText, statusOf, liveKey, task, toast, confirmAction, makeForm, modal, copyButton, targetOf } from './kit.js';
 import { parseQuantity, parseCPU, parseMemory, formatCPU, formatBytes, formatPercent, podResources, selectorText, formatDuration, certificateSummary } from './format.js';
 import { meter } from './charts.js';
-import { containerState, nodeRoles, nodeCondition, hpaMetrics, quotaUsage, ingressRules, servicePorts, externalIPs, isDefaultClass, crdStorageVersion, cronNext, controllerOf, involved, kindColumns, pageContext, jsonPath, resourceForKind } from './kinds.js';
-import { rowMenu, selectionFor, forwardDialog, forwardablePorts, logsFor, shell, attach, rollback, setDefaultClass, kubeconfigDialog, openExternal } from './ops.js';
-import { muted, openRef, refLink, kindRef, metaSection, conditionsList, tolerationsTable, simpleTable, jsonBlock, affinitySummary, consumption, podsSection, metricsView } from './detail-common.js';
+import { containerState, nodeRoles, nodeCondition, hpaMetrics, quotaUsage, ingressRules, externalIPs, isDefaultClass, crdStorageVersion, cronNext, controllerOf, involved, kindColumns, pageContext, jsonPath } from './kinds.js';
+import { rowMenu, forwardDialog, logsFor, shell, rollback, setDefaultClass, kubeconfigDialog, openExternal } from './ops.js';
+import { muted, refLink, kindRef, metaSection, conditionsList, tolerationsTable, simpleTable, jsonBlock, affinitySummary, consumption, podsSection, metricsView } from './detail-common.js';
 import { podQueries, namespaceQueries, nodeQueries, pvcQueries, ingressQueries, podPattern } from './promql.js';
 
 const levelBadge = { good: 'good', warn: 'warn', bad: 'bad', done: '', pending: 'warn' };
@@ -13,7 +13,6 @@ const cpuText = value => formatCPU(parseCPU(value));
 const memText = value => { const bytes = parseMemory(value); return Number.isFinite(bytes) ? formatBytes(bytes) : String(value ?? '—'); };
 const quantityText = (key, value) => (value === undefined ? '—' : key === 'cpu' || key.endsWith('.cpu') ? cpuText(value) : /memory|storage|hugepages/.test(key) ? memText(value) : String(value));
 const yesNo = value => (value ? 'Yes' : 'No');
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const workloadKinds = new Set(['Deployment', 'StatefulSet', 'DaemonSet', 'ReplicaSet', 'ReplicationController', 'Job']);
 
 // ---- Action buttons for the drawer (mirrors the row menu) -------------------------------------
@@ -580,7 +579,7 @@ function hpaOverview(selected) {
 function vpaOverview(selected) {
   const vpa = selected.item; const target = vpa.spec?.targetRef;
   const recs = vpa.status?.recommendation?.containerRecommendations || [];
-  const pair = (rec, key) => `${cpuText(rec?.cpu)} / ${memText(rec?.memory)}`.replace(/undefined/g, '—');
+  const pair = rec => `${cpuText(rec?.cpu)} / ${memText(rec?.memory)}`.replace(/undefined/g, '—');
   return [
     section('Autoscaler', dl([['Target', target ? kindRef({ ...target, namespace: selected.namespace }) : ''], ['Update mode', vpa.spec?.updatePolicy?.updateMode || 'Auto'], ['Min replicas', vpa.spec?.updatePolicy?.minReplicas], ['Resource policy', vpa.spec?.resourcePolicy ? jsonBlock(vpa.spec.resourcePolicy, { title: 'Container policies' }) : '']])),
     section('Recommendations (CPU / memory)', recs.length ? simpleTable(recs, [['Container', r => r.containerName], ['Target', r => pair(r.target)], ['Lower bound', r => pair(r.lowerBound)], ['Upper bound', r => pair(r.upperBound)], ['Uncapped', r => pair(r.uncappedTarget)]]) : muted('No recommendation yet.')),

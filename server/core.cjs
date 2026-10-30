@@ -489,7 +489,7 @@ function createBackend(options = {}) {
     }
     if (url.pathname.startsWith('/api/')) {
       const bearer = /^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization || '');
-      const supplied = websocket ? url.searchParams.get('token') : (req.headers['x-rubban-token'] || req.headers['x-marsad-token'] || bearer?.[1]);
+      const supplied = websocket ? url.searchParams.get('token') : (req.headers['x-rubban-token'] || bearer?.[1]);
       if (typeof supplied !== 'string' || !/^[a-f0-9]{64}$/.test(supplied) ||
           !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(token))) throw problem('Unauthorized', 401);
     }
@@ -576,7 +576,7 @@ function createBackend(options = {}) {
   }
 
   function forwardView(forward) {
-    const { child, ...publicFields } = forward;
+    const { child: _child, ...publicFields } = forward;
     const embed = embeds.get(forward.id);
     return embed ? { ...publicFields, embedPort: embed.port } : publicFields;
   }
@@ -857,6 +857,7 @@ function createBackend(options = {}) {
         // The extension owns its completed response.
       } else throw problem('API route not found', 404);
     } catch (error) {
+      if ((error.status || 500) >= 500) options.logger?.error(error, { route: String(req.url).split('?')[0] });
       if (!res.writableEnded && !res.destroyed) sendJSON(res, { error: shortError(error) }, error.status || 500);
     }
   });
@@ -1026,7 +1027,7 @@ function createBackend(options = {}) {
         if (pty) args.push('--tty=true');
         args.push(validateName(query.pod, 'pod'));
         if (query.container) args.push(`--container=${validateName(query.container, 'container')}`);
-        // Prefer bash when the image has it, as Lens does; fall back to sh.
+        // Prefer bash when the image has it; fall back to sh.
         if (mode === 'exec') args.push('--', '/bin/sh', '-c', 'if [ -x /bin/bash ]; then exec /bin/bash; else exec /bin/sh; fi');
       } else {
         ({ command, args } = localShell(Boolean(query.context)));

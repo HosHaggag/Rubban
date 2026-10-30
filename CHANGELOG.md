@@ -1,16 +1,24 @@
 # Changelog
 
+## 0.11.0: Cleanup
+
+- Removed the unused Team hub, cluster agent, Extensions, Cloud import, OpenCost, GitOps overview and Flux endpoints and the services behind them. The AI assistant, Prometheus queries and the MCP bridge stay.
+- Removed the compatibility code for earlier product names (environment variables, data folders, the old token header and installer clean-up).
+- Errors are written to `logs/rubban.log` in the data folder (rotated at 5 MB, three old files kept). **Help › Open log folder** opens it.
+- Unexpected errors in the desktop app are logged and shown in one dialog instead of being lost.
+- `--smoke-test` exits with a failure when the page logs renderer errors.
+- Dependabot keeps npm dependencies current; ESLint runs with `npm run lint`.
+
 ## 0.10.7: AI assistant fix and simpler tools
 
-- Fixed Codex prompts from non-Git desktop installs by adding --skip-git-repo-check while retaining the read-only sandbox and stdin prompt handling.
+- Fixed AI assistant prompts from non-Git desktop installs.
 - Removed the Security toolbar button, command entry and dedicated page content.
-- Added regression coverage for the Codex invocation contract.
+- Added regression coverage for the AI CLI invocation contract.
 
 ## 0.10.6: Simpler workspace
 
 - Removed Team Workspace, Extensions and Cloud clusters pages, toolbar buttons and commands, plus cloud onboarding shortcuts.
 - Removed the Flux navigation section and Flux content from the GitOps overview; Argo CD remains.
-- Original Rubban header restored; no Rased logo or byline is included.
 
 ## 0.10.5: RabbitMQ login and readability
 
@@ -46,7 +54,7 @@
 - Add authenticated HTTP regression coverage for eviction, disruption-budget errors, default-class ordering, legacy default annotations, missing targets and IngressClass defaults.
 - Re-check the eviction and default-storage-class UI flows in a browser with isolated fixtures, including a 2,000-pod list. These checks do not replace acceptance testing against a real Kubernetes API server.
 
-## 0.10.0: Faster navigation, no animations, Lens colours
+## 0.10.0: Faster navigation, no animations, new colours
 
 - **Pages open much faster.** Measured with 2,000 pods in one namespace:
   - Pods list: from about 1.5 s to under 0.1 s.
@@ -57,30 +65,25 @@
   - Each list stays in memory for five minutes after you leave its page, with its watch still running, so going back to a page is instant and shows current data. The server also keeps idle watches for two minutes instead of 20 seconds.
   - The pulsing "Live" dot used to repaint the whole page several times a second. That made everything sluggish on big lists; it is gone.
 - **No animations or transitions anywhere.** This covers the live dot, row highlights, spinners, chevrons, button fades and the terminal cursor blink.
-- **Lens colour palette:**
+- **New colour palette:**
   - Dark grey chrome (`#181a1c`) around a `#1f2123` content area, `#2d2f31` separators and `#37383e` row hover.
   - White column headers, grey cell text and blue (`#3d90ce`) links and accent.
   - Status shown as coloured text (green Running, orange Pending, red failures).
   - The terminal, charts and app icon use the same palette.
-- **Tables look and behave like Lens:**
+- **Tables:**
   - Full-height lists with a sticky header.
   - Columns are sized to fit the panel, and long names end with `…`. Hover a cell to see the full value.
   - Namespace, owner and node are links that open that object.
 - **Large lists in kubectl fallback mode.** When the live connection is off and Rubban lists through kubectl, a list can now be up to 64 MB instead of 12 MB. Before, very large namespaces failed with "Command output exceeded the configured limit".
 
-## 0.9.0: Marsad is now Rubban · رُبّان
+## 0.9.0: New name and logo
 
-- **New name and logo.** Marsad (مرصد, observatory) is now **Rubban · رُبّان**, the ship's captain, the Arabic for what "Kubernetes" (helmsman) means. The new compass mark replaces the radar on the app icon (Windows `.ico`, macOS `.icns`), in the sidebar and in the window.
+- **New name and logo.** The app is now **Rubban · رُبّان**, the ship's captain, the Arabic for what "Kubernetes" (helmsman) means. The new compass mark replaces the radar on the app icon (Windows `.ico`, macOS `.icns`), in the sidebar and in the window.
 - Everything uses the new name:
   - the executable (`Rubban.exe`, `Rubban.app`) and bundle ID (`dev.rubban.desktop`);
   - the installers (`Install-Rubban.ps1`, `Install-Rubban.command`);
   - the data folders (`%USERPROFILE%\Rubban\Rubban-Data`, `~/Library/Application Support/Rubban`);
   - the environment variables (`RUBBAN_*`) and the release zips (`Rubban-<version>-…`).
-- **Upgrading keeps your settings.**
-  - On first launch, Rubban copies the settings from the Marsad (or Prism) data folder.
-  - `Install-Rubban.ps1` also brings over the kubectl/helm a Marsad install had bundled, and replaces the old Start menu shortcut.
-  - `MARSAD_*` and `PRISM_*` environment variables are still read, as is the old `X-Marsad-Token` header.
-  - The old app is left in place for you to delete.
 - **Release builds no longer need a `zip` command.** `npm run package:*` writes the zips itself, keeping Unix permissions and the symlinks inside macOS app bundles. This fixes `spawnSync zip EACCES` on WSL when `zip` is not installed.
 
 ## 0.8.0: macOS support, release builds and install guide
@@ -101,7 +104,7 @@
   - Bitnami chart and the official image: `RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` or `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS`, as literal values, Secret references, `envFrom` Secrets or `*_FILE` mounts;
   - otherwise RabbitMQ's `guest` / `guest`, which works because the port forward arrives on the pod's loopback interface.
   The bar above the console shows the username, the password (hidden until you reveal it), copy buttons, where the login came from, *Open in browser* and *Reconnect*. The console is reached through a port forward (listed under Port Forwarding) and a loopback proxy on its own port, so the console page cannot read Rubban's token or window; the login is handed to it with a message addressed to that origin only and is never put in a URL.
-- **Nodes that metrics-server leaves out.** metrics-server omits a node (and its pods) when it fails to scrape that node's kubelet, which is why such a node showed `—` while Lens, which reads Prometheus, showed bars. Rubban now notices nodes missing from `metrics.k8s.io` and reads their CPU and memory from the kubelet summary API through the API server (`nodes/proxy`), marked "read from the kubelet". If that also fails, the node shows *no data* with the reason, and the Nodes and Overview totals compare usage only with the nodes that reported (for example "on 5 of 6 nodes") instead of understating utilisation.
+- **Nodes that metrics-server leaves out.** metrics-server omits a node (and its pods) when it fails to scrape that node's kubelet, which is why such a node showed `—` while Prometheus-based tools showed bars. Rubban now notices nodes missing from `metrics.k8s.io` and reads their CPU and memory from the kubelet summary API through the API server (`nodes/proxy`), marked "read from the kubelet". If that also fails, the node shows *no data* with the reason, and the Nodes and Overview totals compare usage only with the nodes that reported (for example "on 5 of 6 nodes") instead of understating utilisation.
 
 ## 0.6.0: Argo CD › Manage
 
@@ -124,9 +127,9 @@
 - **Helm.** Chart details with README, versions and default values; install pre-filled with those values. Release details with values (user-supplied or all), notes, managed resources (open the live object) and history with rollback; upgrade pre-fills the repository chart and current values.
 - **Create** offers templates for 33 kinds, pre-filled with the current namespace. **Port forwarding** can pick a free local port and open the browser. Sidebar sections appear for Gateway API, admission policies and Flux when the cluster serves them.
 
-## 0.4.0: Marsad · مرصد and the Graphite Console design
+## 0.4.0: Graphite Console design
 
-- **New name.** Prism became **Marsad · مرصد** (observatory); the product has been called **Rubban** since 0.9.0. Window title, sidebar brand, About box, service scripts, the MCP server name and environment variables took the new name. `PRISM_*` variables are still honoured, and an existing `Prism-Data` folder next to the app was renamed on first launch so settings carried over.
+- **New name.** Window title, sidebar brand, About box, service scripts, the MCP server name and environment variables took a new name; the product has been called **Rubban** since 0.9.0.
 - **Graphite Console design.** Near-black, compact layout with monospaced resource names, status dots, a green signal accent and a radar logo. Inter, JetBrains Mono and Noto Kufi Arabic are bundled under `ui/fonts` so the app looks the same on every machine.
 - **Simpler chrome.** The separate icon rail is gone: workspace tools (metrics, security, team, cloud, extensions, AI, settings) sit at the bottom of the sidebar, pinned clusters sit under the cluster selector, and the namespace selector, refresh, shell and create actions live in the top bar.
 - **Pods table** now shows Status (including container problems such as `CrashLoopBackOff`), Ready, Restarts, Node, IP and Age.

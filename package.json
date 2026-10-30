@@ -1,7 +1,7 @@
 {
   "name": "rubban",
   "productName": "Rubban",
-  "version": "0.10.7",
+  "version": "0.11.0",
   "description": "Independent Kubernetes desktop workbench and self-hosted services",
   "private": true,
   "license": "MIT",
@@ -14,9 +14,8 @@
     "package:win": "node scripts/package-win.cjs",
     "package:mac": "node scripts/package-mac.cjs",
     "package:all": "node scripts/package-win.cjs && node scripts/package-mac.cjs",
-    "team": "node services/team-hub.cjs",
-    "agent": "node services/agent.cjs",
-    "mcp": "node services/mcp.cjs"
+    "mcp": "node services/mcp.cjs",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@lydell/node-pty": "1.1.0",
@@ -27,8 +26,11 @@
   },
   "devDependencies": {
     "@electron/packager": "20.3.0",
+    "@eslint/js": "9.39.5",
     "electron": "44.9.1",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "eslint": "9.39.5",
+    "globals": "16.5.0"
   },
   "engines": {
     "node": ">=24.11.0"

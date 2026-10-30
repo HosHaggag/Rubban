@@ -170,11 +170,6 @@ export function rowMenu(resource, item) {
   if (resource === 'serviceaccounts') menu.push({ icon: '⚿', label: 'Kubeconfig', action: () => kubeconfigDialog(selected) });
   if (resource === 'customresourcedefinitions') menu.push({ icon: '▤', label: 'Open resources', action: () => hooks.openView('resource', `${item.spec?.names?.plural}.${item.spec?.group}`, item.spec?.names?.kind) });
   if (resource === 'applications.argoproj.io' && hooks.argoMenu) return hooks.argoMenu(item);
-  if (/\.toolkit\.fluxcd\.io$/.test(resource) || resource === 'applications.argoproj.io') {
-    const gitops = action => task(async () => { if (!await confirmAction(`${action} this GitOps resource. Its controller may change cluster workloads.`, selected.name)) return; done(`${action} requested.`)(await post('/api/gitops', { context: selected.context, namespace: selected.namespace, kind: resource, name: selected.name, action })); });
-    if (resource === 'applications.argoproj.io') menu.push({ icon: '⟳', label: 'Sync', action: gitops('sync') }, { icon: '↻', label: 'Hard refresh', action: gitops('refresh') });
-    else menu.push({ icon: '⟳', label: 'Reconcile', action: gitops('reconcile') }, item.spec?.suspend ? { icon: '⏵', label: 'Resume', action: gitops('resume') } : { icon: '⏸', label: 'Suspend', action: gitops('suspend') });
-  }
   if (resource !== 'events') {
     if (menu.length) menu.push('-');
     menu.push({ icon: '✎', label: 'Edit', action: () => edit(item, resource) });

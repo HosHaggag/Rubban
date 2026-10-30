@@ -1,7 +1,7 @@
 // Argo CD application management: the Manage view (status cards, filters, bulk actions and an
 // errors list) and the Application details (problems, last operation, resources, history) with
 // refresh, hard refresh, sync, terminate, auto-sync, rollback and delete.
-import { state, hooks, el, button, badge, info, loading, post, table, dl, chips, section, age, dateText, task, toast, modal, confirmAction, page, actions, readStore, writeStore, liveKey, link, popupMenu } from './kit.js';
+import { state, hooks, el, button, badge, info, loading, post, table, dl, section, age, dateText, task, toast, modal, confirmAction, page, actions, readStore, writeStore, liveKey, link, popupMenu } from './kit.js';
 import { resourceForKind } from './kinds.js';
 import { simpleTable, refLink, kindRef, conditionsList, muted } from './detail-common.js';
 

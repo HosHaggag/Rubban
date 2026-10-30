@@ -40,50 +40,6 @@ test('Codex assistant accepts non-Git installs while retaining read-only sandbox
   assert.ok(call.opts.input.endsWith(prompt + '\n'));
   assert.equal(call.opts.timeoutMs, 180000);
 });
-test('integration availability retains individual failures rather than inventing empty success', async () => {
-  const h = harness();
-  const result = await h.invoke('/api/integrations?context=test&namespace=apps', { run: async (_command, args) => {
-    if (args[1].startsWith('applications')) throw new Error('Argo controller not installed');
-    return { stdout: '{"items":[{"metadata":{"name":"observed"}}]}' };
-  } });
-  assert.equal(result.data.groups.length, 6);
-  assert.equal(result.data.groups.find(g => g.id === 'argo-applications').available, false);
-  assert.equal(result.data.groups[0].items[0].metadata.name, 'observed');
-});
-test('GitOps operations use fixed kubectl operations and exact literal targets', async () => {
-  const h = harness();
-  await h.invoke('/api/gitops', { method: 'POST', body: { context: 'dev', namespace: 'apps', kind: 'kustomizations.kustomize.toolkit.fluxcd.io', name: 'website', action: 'suspend' } });
-  assert.equal(h.calls.length, 1);
-  assert.equal(h.calls[0].args[0], 'patch');
-  assert.deepEqual(JSON.parse(h.calls[0].args.at(-1)), { spec: { suspend: true } });
-  await assert.rejects(h.invoke('/api/gitops', { method: 'POST', body: { context: 'dev', namespace: 'apps', kind: 'pods', name: 'website', action: 'delete' } }), /Unsupported/);
-});
-test('unconfigured costs are explicitly unavailable and make no remote request', async () => {
-  const h = harness({ fetchJSON: async () => { throw new Error('Unexpected remote request'); } });
-  const result = await h.invoke('/api/cost');
-  assert.equal(result.data.available, false); assert.match(result.data.reason, /Configure/);
-});
-test('cost queries only use the saved endpoint and supported windows', async () => {
-  let requested;
-  const h = harness({ fetchJSON: async u => { requested = new URL(u); return { data: [] }; } });
-  const result = await h.invoke('/api/cost?period=7d&url=http://attacker.invalid', { prefs: { opencostUrl: 'http://127.0.0.1:9003' } });
-  assert.equal(result.data.available, true); assert.equal(requested.hostname, '127.0.0.1');
-  assert.equal(requested.pathname, '/allocation'); assert.equal(requested.searchParams.get('window'), '7d');
-  await assert.rejects(h.invoke('/api/cost?period=forever', { prefs: { opencostUrl: 'http://127.0.0.1:9003' } }), /Unsupported/);
-});
-test('remote plaintext collaboration login is rejected before credentials leave device', async () => {
-  let touched = false;
-  const h = harness({ fetchJSON: async () => { touched = true; return {}; } });
-  await assert.rejects(h.invoke('/api/team/login', { method: 'POST', body: { url: 'http://remote.invalid', username: 'user', password: 'never-send' } }), /HTTPS/);
-  assert.equal(touched, false);
-});
-test('team sessions do not disclose session token through configuration endpoint', async () => {
-  const h = harness({ fetchJSON: async (url) => new URL(url).pathname === '/api/login' ? { token: 'test-session-token' } : { clusters: [{ id: 'dev', name: 'Development', connected: true }] } });
-  const result = await h.invoke('/api/team/login', { method: 'POST', body: { url: 'https://hub.example', username: 'admin', password: 'test-value' } });
-  assert.equal(result.data.clusters[0].name, 'Development');
-  const config = await h.invoke('/api/team'); assert.equal(config.data.configured, true);
-  assert.equal(JSON.stringify(config.data).includes('test-session-token'), false);
-});
 test('service URLs reject embedded passwords and non-web schemes', () => {
   assert.throws(() => validateServiceURL('http://user:password@host/'));
   assert.throws(() => validateServiceURL('file:///C:/secret'));

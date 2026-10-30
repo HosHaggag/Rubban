@@ -1,9 +1,9 @@
-import { $, state, hooks, field, makeForm, confirmAction, modal, el, button, badge, actions, output, info, loading, mini, toast, task, api, get, post, clusterQuery, targetOf, socketURL, readStore, writeStore, age, dateText, statusOf, liveKey, liveStamp, popupMenu, closeMenus, table, page, panel, empty, displayError, dl, link, chips, copyButton, download, section, MOD } from './kit.js';
+import { $, state, hooks, makeForm, confirmAction, modal, el, button, badge, actions, output, info, loading, toast, task, api, get, post, clusterQuery, targetOf, socketURL, readStore, writeStore, age, statusOf, liveKey, liveStamp, table, page, panel, empty, displayError, dl, link, MOD } from './kit.js';
 import { createUsage } from './usage.js';
-import { formatCPU, formatBytes, formatPercent, parseCPU, parseMemory, podResources } from './format.js';
+import { formatCPU, formatBytes, formatPercent, parseCPU, parseMemory } from './format.js';
 import { lineChart, meter } from './charts.js';
 import { kindColumns, pageContext, needsPods, usesUsage, podScopeFor, searchTextFor, eventColumns, eventTime, involved, usageCell, controllerOf, resourceForKind, isControlPlane, nodeCondition } from './kinds.js';
-import { rowMenu, bulkActions, selectionFor, openExternal as openExternalLink } from './ops.js';
+import { rowMenu, bulkActions, openExternal as openExternalLink } from './ops.js';
 import { kindOverview, kindMetrics, detailActions, metricsView } from './details.js';
 import { openLogs, openTerminal, setupDock, toggleDock, localShellTarget } from './dock.js';
 import { clusterQueries } from './promql.js';
@@ -108,8 +108,7 @@ const NAV = [
 // Views reached from the rail and the command palette rather than the sidebar.
 const EXTRA_VIEWS = [
   leaf('Metrics & monitoring', 'metrics', undefined, { icon: 'metrics' }),
-  leaf('Argo CD overview', 'gitops', undefined, { icon: 'gitops' }),
-  leaf('Cost insights', 'cost', undefined, { icon: 'cost' }), leaf('API resources', 'discovery', undefined, { icon: 'custom' }),
+  leaf('API resources', 'discovery', undefined, { icon: 'custom' }),
   leaf('AI assistant', 'ai', undefined, { icon: 'ai' }),
   leaf('Settings', 'settings', undefined, { icon: 'settings' }),
 ];
@@ -222,13 +221,6 @@ function renderTabs() {
   document.querySelectorAll('.rail-button[data-section]').forEach(node => { const active = node.dataset.section === tab.section; node.classList.toggle('active', active); railMatched ||= active; });
   $('#workspace-button').classList.toggle('active', !railMatched);
 }
-const resourceColumns = [
-  { title: 'Name', class: 'name', render: item => item.metadata?.name || '—' },
-  { title: 'Namespace', render: item => item.metadata?.namespace || 'Cluster scoped' },
-  { title: 'Status', render: item => badge(...statusOf(item)) },
-  { title: 'Ready / detail', render: item => { if (item.status?.containerStatuses) return `${item.status.containerStatuses.filter(c => c.ready).length}/${item.spec?.containers?.length || 0} containers`; if (item.spec?.replicas !== undefined) return `${item.status?.readyReplicas || 0}/${item.spec.replicas} replicas`; if (item.spec?.type) return item.spec.type; if (item.type) return item.type; return item.kind || '—'; } },
-  { title: 'Age', render: item => age(item.metadata?.creationTimestamp) },
-];
 // ---- Live data: WebSocket subscriptions to shared Kubernetes watches -------------------------
 const LIVE_LABELS = { connecting: 'Connecting', live: 'Live', reconnecting: 'Reconnecting', polling: 'Polling', snapshot: 'Snapshot', error: 'Error' };
 const LIVE_RANK = { error: 5, reconnecting: 4, connecting: 3, snapshot: 2, polling: 1, live: 0 };
@@ -440,8 +432,6 @@ async function render() {
       case 'metrics': node = await metricsPage(); break;
       case 'helm': node = await helmPage(); break;
       case 'forwards': node = await forwardsPage(); break;
-      case 'gitops': node = await integrationPage(); break;
-      case 'cost': node = await costPage(); break;
       case 'discovery': node = discoveryPage(); break;
       case 'settings': node = await settingsPage(); break;
       case 'ai': node = aiPage(); break;
@@ -1183,35 +1173,6 @@ function helmDialog(action, release = {}) {
   modal(label, `Context: ${state.context}`, makeForm(specs, label, async values => { const result = await post('/api/helm', clusterQuery({ ...values, action })); toast(`${label} completed.`); render(); return result; }, action === 'repo-add' ? {} : { confirm: `${label} changes cluster resources. Review the chart reference, namespace, and values before continuing.` }));
 }
 
-async function integrationPage() {
-  const response = await get('/api/integrations', clusterQuery());
-  const root = page('Argo CD overview', 'Observe and sync applications managed by Argo CD.');
-  const ids = ['argo-applications'];
-  const kinds = { 'argo-applications': 'applications.argoproj.io' };
-  for (const group of (response.groups || []).filter(g => ids.includes(g.id))) {
-    root.append(el('div', { class: 'section-label' }, el('h2', { text: group.title }), badge(group.available ? `${group.items?.length || 0} resources` : 'Not installed', group.available ? 'info' : '')));
-    if (!group.available) { root.append(info(group.error || `${group.title} is unavailable. Install its controller and custom resource definitions in this cluster to enable this view.`)); continue; }
-    const columns = [...resourceColumns.slice(0, 3)];
-    columns.push({ title: 'Actions', render: item => actions(...(group.id === 'argo-applications' ? ['sync', 'refresh'] : ['reconcile', item.spec?.suspend ? 'resume' : 'suspend']).map(action => button(action.charAt(0).toUpperCase() + action.slice(1), task(async event => { event.stopPropagation(); if (!await confirmAction(`${action} this GitOps resource. Its controller may change cluster workloads.`, item.metadata.name)) return; const result = await post('/api/gitops', { context: state.context, namespace: item.metadata.namespace, kind: kinds[group.id], name: item.metadata.name, action }); toast(result.output || `${action} requested.`); render(); }), 'quiet compact'))) });
-    root.append(table(group.items || [], columns, item => showResource(item, kinds[group.id])));
-  }
-  if (!(response.groups || []).some(g => ids.includes(g.id))) root.append(info('Integration discovery returned no supported controllers. This view requires Argo CD custom resources.'));
-  return root;
-}
-async function costPage() {
-  const root = page('Cost insights', 'Allocation data from your own OpenCost service. Configure its URL in Settings.');
-  const period = el('select', { 'aria-label': 'Cost allocation window' }, ['24h', '7d', '30d'].map(value => el('option', { value, text: value })));
-  const body = el('div');
-  const context = state.context;
-  const load = async () => { body.replaceChildren(loading()); try { const response = await get('/api/cost', { context, period: period.value }); body.replaceChildren(response.available ? panel(`OpenCost · ${period.value}`, [info(`Source: ${response.source || 'Configured OpenCost endpoint'}`), costData(response.data)]) : empty('Connect your cost service', response.reason || 'OpenCost has not been configured.', button('Open Settings', () => openView('settings'), 'primary compact'), '◌')); } catch (error) { body.replaceChildren(info(error.message, 'error')); } };
-  root.append(el('div', { class: 'actions', style: 'margin-bottom:18px' }, el('span', { class: 'muted', text: 'Allocation window' }), period, button('Refresh allocations', load, 'compact')), body); await load(); return root;
-}
-function costData(data) {
-  const records = (data?.data || []).flatMap(bucket => Object.entries(bucket || {}).map(([name, entry]) => ({ name, ...entry })));
-  if (!records.length) return output(data);
-  const number = value => value !== undefined && value !== null && Number.isFinite(Number(value)) ? Number(value).toFixed(4) : '—';
-  return table(records, [{ title: 'Allocation', class: 'name', render: item => item.name }, { title: 'CPU cost', render: item => number(item.cpuCost) }, { title: 'RAM cost', render: item => number(item.ramCost) }, { title: 'Network cost', render: item => number(item.networkCost) }, { title: 'Total cost', render: item => number(item.totalCost) }], null, { searchText: item => item.name });
-}
 function discoveryPage() {
   const root = page('API & custom resources', 'Browse resource types discovered directly from your cluster API. Open any type as a first class resource view.');
   const available = state.discovery.filter(resource => (resource.verbs || []).includes('list'));
@@ -1242,7 +1203,7 @@ async function settingsPage() {
     root.append(panel(`Metrics · ${state.context}`, [info('Rubban reaches Prometheus through the Kubernetes API server’s service proxy using your kubeconfig credentials; nothing is exposed locally. Auto-detect checks well-known service names and verifies them with a test query.'), form]));
   }
   root.append(panel('Terminal', makeForm([{ name: 'nodeShellImage', label: 'Node shell image', value: state.preferences.nodeShellImage || '', placeholder: 'busybox:1.36', help: 'Image for the privileged debug pod that node shells run in (kubectl debug node). It needs a shell; the host filesystem is mounted at /host.' }], 'Save terminal settings', values => save({ nodeShellImage: values.nodeShellImage.trim() }))));
-  root.append(panel('Connected services', makeForm([{ name: 'prometheusUrl', label: 'External Prometheus URL', type: 'url', value: state.preferences.prometheusUrl || '', placeholder: 'http://127.0.0.1:9090', help: 'Optional. Used only by the External Prometheus query on the Metrics page.' }, { name: 'opencostUrl', label: 'OpenCost URL', type: 'url', value: state.preferences.opencostUrl || '', placeholder: 'http://127.0.0.1:9003', help: 'Use your own OpenCost allocation API.' }, { name: 'aiCommand', label: 'AI CLI', options: [{ value: '', label: 'Not configured' }, { value: 'codex', label: 'Codex' }, { value: 'claude', label: 'Claude' }, { value: 'gemini', label: 'Gemini' }, { value: 'opencode', label: 'OpenCode' }], value: state.preferences.aiCommand || '', help: 'Use an installed, authenticated CLI under your own account.' }], 'Save preferences', values => save(values))));
+  root.append(panel('Connected services', makeForm([{ name: 'prometheusUrl', label: 'External Prometheus URL', type: 'url', value: state.preferences.prometheusUrl || '', placeholder: 'http://127.0.0.1:9090', help: 'Optional. Used only by the External Prometheus query on the Metrics page.' }, { name: 'aiCommand', label: 'AI CLI', options: [{ value: '', label: 'Not configured' }, { value: 'codex', label: 'Codex' }, { value: 'claude', label: 'Claude' }, { value: 'gemini', label: 'Gemini' }, { value: 'opencode', label: 'OpenCode' }], value: state.preferences.aiCommand || '', help: 'Use an installed, authenticated CLI under your own account.' }], 'Save preferences', values => save(values))));
   root.append(el('div', { class: 'section-label' }, el('h2', { text: 'Local environment' })));
   const environment = el('div'); for (const [name, value] of Object.entries(state.health?.tools || {})) environment.append(el('div', { class: 'key-value' }, el('span', { text: name }), el('span', {}, badge(toolAvailable(value) ? 'Available' : 'Not found', toolAvailable(value) ? 'good' : 'warn'), el('span', { class: 'mono', style: 'margin-left:10px', text: typeof value === 'object' ? value?.path || value?.version || '' : typeof value === 'string' ? value : '' }))));
   environment.append(el('div', { class: 'key-value' }, el('span', { text: 'Platform' }), el('span', { text: state.health?.platform || 'Unknown' })), el('div', { class: 'key-value' }, el('span', { text: 'App version' }), el('span', { text: state.health?.version || 'Development build' })));

@@ -1,16 +1,16 @@
 # Rubban · رُبّان
 
-Rubban (رُبّان, *ship's captain*, the Arabic for what "Kubernetes" means) is a desktop Kubernetes workbench for Windows and macOS. Until version 0.9.0 it was called **Marsad (مرصد)**; see [Upgrading from Marsad](#upgrading-from-marsad). It works with your existing kubeconfig and credentials (GKE, EKS, AKS or any other cluster) and covers what you do every day in one window:
+Rubban (رُبّان, *ship's captain*, the Arabic for what "Kubernetes" means) is a desktop Kubernetes workbench for Windows and macOS. It works with your existing kubeconfig and credentials (GKE, EKS, AKS or any other cluster) and covers what you do every day in one window:
 
 - **Live views of every kind.** Each kind gets its own columns and details, kept up to date over a per-cluster watch connection.
-- **Fast on big clusters.** Lists of thousands of pods open in well under a second: only the rows on screen are drawn, and each list stays in memory for a few minutes after you leave it, so going back to a view is instant. There are no animations, and the dark theme uses the same colours as Lens.
+- **Fast on big clusters.** Lists of thousands of pods open in well under a second: only the rows on screen are drawn, and each list stays in memory for a few minutes after you leave it, so going back to a view is instant. There are no animations.
 - **Human-readable CPU and memory everywhere.** Usage is shown for pods, workloads, namespaces and nodes against their requests, limits and capacity, with history from Prometheus when the cluster has it.
 - **Logs and terminals.** Logs stream for pods and whole workloads. Pod exec and attach, node shells and a local terminal scoped to the selected cluster open in a tabbed dock.
 - **Actions.** Edit YAML, view the diff and apply, scale, restart, roll back, cordon, drain and evict, trigger CronJobs, and manage port forwards.
 - **Helm.** Browse charts, and manage releases: values, history, upgrade, rollback and uninstall.
 - **Argo CD › Manage.** Refresh, hard refresh, sync, terminate, set auto-sync, roll back and delete applications, with every app's error messages listed together.
 - **RabbitMQ.** Open the management console of each RabbitMQ in the cluster inside Rubban, already signed in with its initial login.
-- **Also included.** Gateway API views, an AI CLI assistant and a read-only MCP bridge for AI tools. The dedicated Team Workspace, Extensions, Cloud clusters, Flux and Security pages have been removed from the desktop UI.
+- **Also included.** Gateway API views, an AI CLI assistant and a read-only MCP bridge for AI tools. 
 
 Secret values never appear in resource lists. They are fetched when you press **Reveal**, or when you open RabbitMQ to sign in automatically using its deployment Secret.
 
@@ -26,11 +26,11 @@ Secret values never appear in resource lists. They are fetched when you press **
 6. [Permissions each feature needs](#6-permissions-each-feature-needs)
 7. [Where Rubban keeps its data](#7-where-rubban-keeps-its-data)
 8. [Troubleshooting](#8-troubleshooting)
-9. [Optional services and MCP](#9-optional-services-and-mcp)
+9. [MCP bridge](#9-mcp-bridge)
 10. [Security model](#10-security-model)
 11. [Project layout](#11-project-layout)
 
-Release notes are in [CHANGELOG.md](CHANGELOG.md), and what is implemented and tested is in [FEATURE-PARITY.md](FEATURE-PARITY.md).
+Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 Drag a table header's right-hand divider to resize that column. Widths are remembered per view. Double-click the divider to restore automatic sizing; focused dividers also support arrow keys and Home. Pods no longer shows a Controlled by column.
 
@@ -173,18 +173,6 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 
 ---
 
-### Upgrading from Marsad
-
-Install Rubban as described above. Your settings come with you:
-
-- **Windows.** `Install-Rubban.ps1` copies the settings from `%USERPROFILE%\Marsad\Marsad-Data`, and the kubectl/helm your Marsad install had bundled. It also replaces the *Marsad* Start menu shortcut with *Rubban*.
-- **macOS.** On first launch, Rubban copies the settings from `~/Library/Application Support/Marsad`.
-- **Environment variables.** `MARSAD_*` variables keep working; `RUBBAN_*` takes precedence.
-
-When everything works, delete the old app yourself: `%USERPROFILE%\Marsad` on Windows, `Marsad.app` on macOS.
-
----
-
 ## 4. First run
 
 1. **Choose a cluster** in the selector at the top left. Rubban lists the contexts from your kubeconfig and does not contact any cluster before you pick one.
@@ -213,7 +201,7 @@ When everything works, delete the old app yourself: `%USERPROFILE%\Marsad` on Wi
 
 ## 5. Build from source (WSL, Linux, macOS or Windows)
 
-The repository lives in WSL at `~/rased/repos/devops/rubban`. Every release zip, for both Windows and macOS, can be built from there.
+Every release zip, for both Windows and macOS, can be built from a Linux or WSL checkout.
 
 ### 5.1 Prerequisites
 
@@ -225,7 +213,7 @@ The repository lives in WSL at `~/rased/repos/devops/rubban`. Every release zip,
 ### 5.2 Run and test
 
 ```bash
-cd ~/rased/repos/devops/rubban
+cd path/to/rubban
 npm ci            # install dependencies from package-lock.json
 npm test          # unit tests (Node test runner)
 npm start         # run the desktop app (in WSL this needs WSLg, as on Windows 11)
@@ -272,8 +260,6 @@ Rubban uses bundled tools first and falls back to the ones on PATH.
 | `RUBBAN_RELEASE_DIR` | Where `package:*` writes the release zips (default `release/`) |
 | `KUBECONFIG` | Standard kubeconfig search path, honoured as usual |
 
-Older `PRISM_*` variables are still accepted.
-
 ---
 
 ## 6. Permissions each feature needs
@@ -310,7 +296,8 @@ This folder holds:
 
 - `preferences.json`: settings, pinned clusters and Prometheus choices;
 - the window profile;
-- `connection.json`: the local API address and token, written while Rubban runs, for the MCP bridge.
+- `connection.json`: the local API address and token, written while Rubban runs, for the MCP bridge;
+- `logs/rubban.log`: errors and start-up problems as JSON lines (rotated at 5 MB, three old files kept). Open it from **Help › Open log folder**.
 
 Rubban never writes to your kubeconfig. Deleting the folder resets Rubban.
 
@@ -332,19 +319,16 @@ Rubban never writes to your kubeconfig. Deleting the folder resets Rubban.
 | Windows: "Windows protected your PC" | Choose **More info**, then **Run anyway**. Rubban is not code-signed. |
 | The terminal says "command-pipe fallback" | The native terminal module could not load. Full-screen programs (vim, top) will not work there. Reinstall Rubban, or use `RUBBAN_DISABLE_PTY=1` deliberately. |
 | A local terminal for a cluster ignores your aliases | This is intentional. A cluster-scoped terminal skips shell startup files so a profile cannot switch `KUBECONFIG`. A terminal opened with no cluster selected loads your normal profile. |
-| Long names are cut off with `…` | Columns are sized to fit the panel, as in Lens. Hover a cell to see its full value, widen the window, or hide columns you do not need with **Columns**. |
+| Something went wrong and you want to report it | Open **Help › Open log folder** and attach `rubban.log`. It contains no secret values. |
+| Long names are cut off with `…` | Columns are sized to fit the panel. Hover a cell to see its full value, widen the window, or hide columns you do not need with **Columns**. |
 | A list still shows old data after a change made elsewhere | Lists update live. If the connection was interrupted, press **Refresh** on the page to list everything again. |
 | Start fresh | Quit Rubban and delete its data folder ([section 7](#7-where-rubban-keeps-its-data)). |
 
 ---
 
-## 9. Optional services and MCP
+## 9. MCP bridge
 
-`services/` contains:
-
-- a small self-hosted team hub;
-- an outbound cluster agent;
-- a read-only **MCP bridge** that lets an AI tool read clusters through a running Rubban.
+`services/` contains a read-only **MCP bridge** that lets an AI tool read clusters through a running Rubban.
 
 Setup details are in [services/README.md](services/README.md).
 
@@ -384,7 +368,7 @@ With Node.js 24 installed you can also run `node services/mcp.cjs …` from the 
 desktop/   Electron main process and preload (window, menus, macOS shell environment)
 server/    Local backend: Kubernetes reads and actions, live watches, metrics, Argo CD, RabbitMQ
 ui/        The interface (plain ES modules, no build step) and its styles
-services/  Optional team hub, cluster agent and MCP bridge
+services/  MCP bridge
 scripts/   Packaging (package-win.cjs, package-mac.cjs) and installers
 assets/    Icons (.ico for Windows, .icns for macOS, .svg/.png)
 ```

@@ -1,14 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { once, EventEmitter } = require('node:events');
+const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
-const { WebSocket } = require('ws');
-const { createTeamHub } = require('./team-hub.cjs');
-const { connectAgent, agentUrl } = require('./agent.cjs');
 const { validateQuery, kubectlPlan, runReadQuery } = require('./kube-read.cjs');
 const { loadConnection, requestForTool, createMcpBridge, startStdio } = require('./mcp.cjs');
 
@@ -30,55 +24,6 @@ test('Kubernetes runner permits structured reads and never arbitrary command fla
   } });
   assert.deepEqual(data, { items: [] }); assert.equal(observed.options.shell, false); assert.equal(observed.options.windowsHide, true);
   assert.deepEqual(observed.args, ['--request-timeout=15s', 'get', 'pods', '--namespace', 'default', '-o', 'json']);
-});
-
-test('agent requires header credentials and TLS outside loopback', () => {
-  assert.throws(() => agentUrl('ws://example.com:4520/agent', 'a'.repeat(36)), /require wss/);
-  assert.throws(() => agentUrl('wss://example.com/agent?token=secret', 'a'.repeat(36)), /query/);
-  assert.throws(() => agentUrl('wss://user:password@example.com/agent', 'a'.repeat(36)), /credentials/);
-  assert.throws(() => createTeamHub({ host: '0.0.0.0' }), /requires TLS/);
-});
-
-test('hub authenticates users and agents, restricts assignments, correlates reads and rejects disconnects', async t => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rubban-hub-test-'));
-  const adminPassword = 'test-admin-password-123'; const viewerPassword = 'test-viewer-password-456';
-  const hub = createTeamHub({ host: '127.0.0.1', port: 0, dataDir, adminPassword, queryTimeoutMs: 1000 });
-  const address = await hub.start(); const base = `http://127.0.0.1:${address.port}`;
-  const sockets = [];
-  t.after(async () => { for (const socket of sockets) socket.terminate(); await hub.close(); const absolute = path.resolve(dataDir); assert.ok(absolute.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(absolute).startsWith('rubban-hub-test-')); fs.rmSync(absolute, { recursive: true, force: true }); });
-  async function call(endpoint, token, body) { const response = await fetch(base + endpoint, { method: body === undefined ? 'GET' : 'POST', headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, body: await response.json() }; }
-  assert.equal((await call('/health')).status, 200);
-  assert.equal((await call('/api/clusters')).status, 401);
-  const login = await call('/api/login', null, { username: 'admin', password: adminPassword }); assert.equal(login.status, 200);
-  const adminToken = login.body.token; assert.ok(login.body.expiresAt > Date.now());
-  const first = await call('/api/clusters', adminToken, { name: 'Development' }); assert.equal(first.status, 201);
-  assert.equal((await call('/api/clusters', adminToken, { name: 'development' })).status, 409);
-  const second = await call('/api/clusters', adminToken, { name: 'Production' }); assert.equal(second.status, 201);
-  const clusterId = first.body.cluster.id;
-  assert.equal((await call('/api/users', adminToken, { username: 'viewer', password: viewerPassword, role: 'viewer', clusterIds: [clusterId] })).status, 201);
-  const viewerToken = (await call('/api/login', null, { username: 'viewer', password: viewerPassword })).body.token;
-  assert.equal((await call('/api/users', viewerToken, { username: 'bad', password: viewerPassword, role: 'admin', clusterIds: [] })).status, 403);
-  assert.deepEqual((await call('/api/clusters', viewerToken)).body.clusters.map(c => c.id), [clusterId]);
-  assert.equal((await call(`/api/clusters/${second.body.cluster.id}/query`, viewerToken, { resource: 'pods' })).status, 403);
-  assert.equal((await call(`/api/clusters/${clusterId}/query`, viewerToken, { resource: 'pods' })).status, 503);
-  let disconnectedStarted;
-  const disconnectedReady = new Promise(resolve => { disconnectedStarted = resolve; });
-  let runnerCalls = 0;
-  const agent = connectAgent({ url: `ws://127.0.0.1:${address.port}/agent`, clusterId, token: first.body.agentToken, runner: async query => { runnerCalls++; if (query.name === 'disconnect-me') { disconnectedStarted(); return new Promise(() => {}); } return { items: [{ metadata: { name: 'example-pod' } }], query }; } });
-  sockets.push(agent); await once(agent, 'open');
-  assert.equal((await call('/api/clusters', viewerToken)).body.clusters[0].connected, true);
-  const query = await call(`/api/clusters/${clusterId}/query`, viewerToken, { resource: 'pods', namespace: 'default' });
-  assert.equal(query.status, 200); assert.equal(query.body.data.items[0].metadata.name, 'example-pod');
-  assert.equal((await call(`/api/clusters/${clusterId}/query`, viewerToken, { resource: 'secrets' })).status, 400);
-  assert.equal((await call(`/api/clusters/${clusterId}/query`, viewerToken, { resource: 'pods', command: 'delete' })).status, 400);
-  assert.equal(runnerCalls, 1);
-  const oversized = await fetch(base + '/api/clusters', { method: 'POST', headers: { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'x'.repeat(17000) }) }); assert.equal(oversized.status, 413); await oversized.text();
-  const pending = call(`/api/clusters/${clusterId}/query`, viewerToken, { resource: 'pods', name: 'disconnect-me' }); await disconnectedReady; agent.close(); assert.equal((await pending).status, 503);
-  const invalid = new WebSocket(`ws://127.0.0.1:${address.port}/agent?clusterId=${clusterId}`, { headers: { authorization: `Bearer ${'x'.repeat(43)}` } }); sockets.push(invalid);
-  const [authError] = await once(invalid, 'error'); assert.match(authError.message, /401/);
-  const stored = fs.readFileSync(path.join(dataDir, 'state.json'), 'utf8'); const audit = fs.readFileSync(path.join(dataDir, 'audit.ndjson'), 'utf8');
-  for (const secret of [adminPassword, viewerPassword, adminToken, viewerToken, first.body.agentToken]) { assert.ok(!stored.includes(secret)); assert.ok(!audit.includes(secret)); }
-  assert.ok(audit.includes('cluster_query')); assert.ok(!audit.includes('example-pod'));
 });
 
 test('MCP bridge negotiates lifecycle, lists four read tools and uses fixed authenticated GET endpoints', async () => {

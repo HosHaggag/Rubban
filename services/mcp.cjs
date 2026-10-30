@@ -1,5 +1,4 @@
 'use strict';
-require('../server/env-compat.cjs');
 const fs = require('node:fs');
 const { RESOURCES, validateQuery } = require('./kube-read.cjs');
 const PROTOCOLS = new Set(['2024-11-05', '2025-03-26', '2025-06-18']);

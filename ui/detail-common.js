@@ -1,6 +1,6 @@
 // Building blocks for resource detail drawers: object metadata, consumption meters, owned pods,
 // conditions, tolerations, metrics charts (Prometheus, or session history from metrics-server).
-import { state, hooks, el, button, badge, info, loading, mini, get, post, table, dl, link, chips, section, age, dateText, statusOf, liveKey, task } from './kit.js';
+import { hooks, el, button, badge, info, loading, mini, get, post, table, dl, link, chips, section, age, dateText, statusOf, liveKey, task } from './kit.js';
 import { formatCPU, formatBytes, formatPercent, selectorText } from './format.js';
 import { lineChart, meter } from './charts.js';
 import { kindColumns, pageContext, resourceForKind, controllerOf } from './kinds.js';

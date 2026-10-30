@@ -1,5 +1,4 @@
 'use strict';
-require('./env-compat.cjs');
 const path = require('node:path');
 const fs = require('node:fs');
 const { createBackend } = require('./core.cjs');

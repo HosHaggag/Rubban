@@ -28,12 +28,12 @@ if (flags.node) {
   if (!flags.licenses || !fs.existsSync(path.join(flags.licenses, 'node-LICENSE.txt'))) throw new Error('Supply complete Node license in --licenses directory.');
   fs.copyFileSync(path.join(flags.licenses, 'node-LICENSE.txt'), path.join(runtime, 'LICENSE.txt'));
   fs.writeFileSync(path.join(runtime, 'provenance.json'), JSON.stringify({ name: 'Node.js', version: flags['node-version'] || 'caller-supplied', sha256: hash(flags.node), license: 'MIT plus included component notices in LICENSE.txt', upstream: 'https://nodejs.org/' }, null, 2) + '\n');
-  for (const [filename, script] of [['Start-Team-Hub.cmd', 'team-hub.cjs'], ['Start-Cluster-Agent.cmd', 'agent.cjs'], ['Rubban-MCP.cmd', 'mcp.cjs']]) {
+  for (const [filename, script] of [['Rubban-MCP.cmd', 'mcp.cjs']]) {
     const lines = ['@echo off', 'setlocal', 'if not defined RUBBAN_DATA_DIR set "RUBBAN_DATA_DIR=%~dp0..\\Rubban-Data\\services"', 'if not defined RUBBAN_KUBECTL set "RUBBAN_KUBECTL=%~dp0resources\\app\\tools\\kubectl.exe"', `"%~dp0runtime\\node.exe" "%~dp0resources\\app\\services\\${script}" %*`, 'exit /b %errorlevel%', ''];
     fs.writeFileSync(path.join(root, filename), lines.join('\r\n'));
   }
 }
-for (const name of ['README.md', 'FEATURE-PARITY.md', 'THIRD-PARTY-NOTICES.md']) {
+for (const name of ['README.md', 'THIRD-PARTY-NOTICES.md']) {
   let content = fs.readFileSync(path.join(resources, name), 'utf8');
   if (name === 'README.md') content = content.replace('](services/README.md)', '](resources/app/services/README.md)');
   fs.writeFileSync(path.join(root, name), content);
