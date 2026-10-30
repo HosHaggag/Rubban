@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/HosHaggag/rubban/internal/live"
 	"github.com/HosHaggag/rubban/internal/logging"
 	"github.com/HosHaggag/rubban/internal/version"
 )
@@ -43,6 +44,13 @@ type Options struct {
 	// DesktopBridge is served at /desktop-bridge.js (empty in web mode).
 	DesktopBridge []byte
 	Version       string
+	// DisableLive turns the live layer off, leaving one-shot kubectl only.
+	DisableLive bool
+	// ProxyStarter replaces `kubectl proxy` (tests). Setting it keeps the live layer on even with an
+	// injected Runner, which otherwise disables it.
+	ProxyStarter live.ProxyStarter
+	// LiveConfig tunes the live layer's timings (tests). Its Starter field is ignored.
+	LiveConfig live.Config
 }
 
 // Connection describes a started backend.
@@ -64,6 +72,7 @@ type Backend struct {
 	procs    processes
 	logger   *logging.Logger
 	kubecfgs *kubeconfigStore
+	live     *live.Live // nil when the live layer is off
 
 	port     atomic.Int64
 	closed   atomic.Bool
@@ -102,6 +111,7 @@ func New(opts Options) *Backend {
 		b.runner = b.execRunner
 	}
 	b.kubecfgs = newKubeconfigStore(dataDir)
+	b.initLive()
 	return b
 }
 
@@ -194,6 +204,7 @@ func (b *Backend) Close() error {
 		cancel()
 	}
 	b.runMu.Unlock()
+	b.live.Close()
 	b.procs.killAll()
 	if b.srv != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
