@@ -68,6 +68,7 @@ type Backend struct {
 	procs    processes
 	logger   *logging.Logger
 	kubecfgs *kubeconfigStore
+	term     terminalState
 
 	port     atomic.Int64
 	closed   atomic.Bool
@@ -106,6 +107,7 @@ func New(opts Options) *Backend {
 		b.runner = b.execRunner
 	}
 	b.kubecfgs = newKubeconfigStore(dataDir)
+	b.wipeTerminals()
 	return b
 }
 
@@ -199,6 +201,7 @@ func (b *Backend) Close() error {
 	}
 	b.runMu.Unlock()
 	b.procs.killAll()
+	b.closeTerminals()
 	if b.srv != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
