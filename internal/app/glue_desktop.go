@@ -11,7 +11,7 @@ import (
 // RUBBAN_SKIP_SHELL_ENV=1); app launches do not inherit it.
 func importShellEnv() { server.ApplyShellEnvironment() }
 
-// newUpdates builds the updater; replaced once internal/updater is merged.
+// newUpdates builds the updater; installing quits the app so the helper can swap the files.
 func newUpdates(s *shell, exe string, packaged bool) Updates {
-	return disabledUpdates{current: version.Version}
+	return newUpdaterAdapter(s.dataDir, version.Version, exe, packaged, s.logger, func() { s.app.Quit() })
 }
