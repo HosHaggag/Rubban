@@ -1,18 +1,82 @@
-# Rubban · رُبّان
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.png">
+    <img src="docs/images/logo-light.png" alt="Rubban · رُبّان" width="460">
+  </picture>
+</h1>
 
-Rubban (رُبّان, *ship's captain*, the Arabic for what "Kubernetes" means) is a desktop Kubernetes workbench for Windows and macOS. It works with your existing kubeconfig and credentials (GKE, EKS, AKS or any other cluster) and covers what you do every day in one window:
+<p align="center">
+  A free, open-source Kubernetes desktop for Windows and macOS.<br>
+  It works with any cluster your kubeconfig can reach: GKE, EKS, AKS, on-premises or local.
+</p>
+
+<p align="center">
+  <a href="https://github.com/HosHaggag/Rubban/releases/latest"><b>Download</b></a> ·
+  <a href="#2-install-on-windows">Install on Windows</a> ·
+  <a href="#3-install-on-macos">Install on macOS</a> ·
+  <a href="CHANGELOG.md">What's new</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/screenshot-problems.png" alt="Rubban's Problems page listing what is wrong in a production and a staging cluster, grouped by cluster" width="100%">
+</p>
+
+Rubban (رُبّان) is Arabic for a ship's captain, a nod to Kubernetes, which is Greek for helmsman. It uses the kubeconfig and credentials you already have, needs no account, and keeps what you do every day in one window.
+
+## Why Rubban
+
+- **Careful with production.** Tag a cluster as production and destructive actions ask you to type the resource name first. Edited YAML is applied only after you have reviewed the diff and a server-side dry run, and a kubeconfig import whose cluster or user names clash with your own is refused, so a command cannot quietly reach the wrong cluster.
+- **Made for many clusters at once.** Every tab keeps its own cluster and namespace, so production and staging sit side by side. Ctrl+K finds resources in every open cluster, the Problems page shows what is wrong in all of them, and any resource can be compared with its twin in another cluster.
+- **The everyday tools are built in.** Argo CD, Helm, Prometheus metrics, terminals, logs of whole workloads, port forwards that survive, and RabbitMQ consoles that open already signed in. There are no plugins to find and install.
+- **Signs you back in.** When a cluster's credentials expire, Rubban says which cluster it is and starts the right sign-in for GKE, EKS or AKS with one click.
+- **Free and light.** MIT-licensed, with no account and no paid tier. It is one small Go program that uses the system's web view, and it never changes your kubeconfig.
+
+## Features
+
+### What is wrong, in every cluster
+
+The **Problems** page, the warning button in the left rail, lists crash loops, image pull errors, out-of-memory kills, pods that cannot be scheduled or never become ready, workloads below their replica count, failed Jobs, pending volume claims, unhealthy nodes, and Argo CD applications that are degraded or out of sync, for every cluster that has a tab open. A row opens the resource in the right cluster, opens its logs, or snoozes it for an hour.
+
+### Production and staging, side by side
+
+<img src="docs/images/screenshot-compare.png" alt="The storefront Deployment compared between a production and a staging cluster, with the replica count, image tag and an added feature flag marked" width="100%">
+
+**Compare…** in a resource's details shows its YAML from two clusters, or two namespaces, side by side. What always differs is left out (`managedFields`, `uid`, `resourceVersion`, timestamps and `status`), differences are marked line by line, and a one-line summary names the fields that changed.
+
+### A whole workload's logs
+
+<img src="docs/images/screenshot-logs.png" alt="Logs of the five pods of the storefront Deployment in one view, each pod in its own colour" width="100%">
+
+Logs of a Deployment, StatefulSet, DaemonSet or Job follow every pod at once, one colour per pod, and keep up as pods come and go. Filter with **Include** and **Exclude** (plain text or `/regex/`), and **Pause** to read while lines keep arriving.
+
+### Live usage everywhere
+
+<img src="docs/images/screenshot-pods.png" alt="The Pods view of a production cluster with live CPU and memory for every pod" width="100%">
+
+CPU and memory are shown for pods, workloads, namespaces and nodes against their requests, limits and capacity, and update live. History comes from Prometheus, Thanos or VictoriaMetrics when the cluster runs one.
+
+### Everything else
 
 - **Live views of every kind.** Each kind gets its own columns and details, kept up to date over a per-cluster watch connection.
 - **Fast on big clusters.** Lists of thousands of pods open in well under a second: only the rows on screen are drawn, and each list stays in memory for a few minutes after you leave it, so going back to a view is instant. There are no animations.
-- **Human-readable CPU and memory everywhere.** Usage is shown for pods, workloads, namespaces and nodes against their requests, limits and capacity, with history from Prometheus when the cluster has it.
-- **Logs and terminals.** Logs stream for pods and whole workloads. Pod exec and attach, node shells and a local terminal scoped to the selected cluster open in a tabbed dock.
-- **Actions.** Edit YAML, view the diff and apply, scale, restart, roll back, cordon, drain and evict, trigger CronJobs, and manage port forwards.
+- **Tabs like a browser.** Each tab keeps its cluster, namespace and view. **+** or Ctrl+T opens another cluster in a new tab, Ctrl+W closes one and Ctrl+Tab moves between them. Your tabs come back on the next launch.
+- **Cluster switcher.** A searchable switcher (Ctrl+Shift+K) with pinned clusters, and a **Clusters** page to rename a cluster, give it an icon and a colour, and tag it production, staging or development.
+- **Import a kubeconfig.** Paste one or pick a file. Rubban keeps a private copy and never changes your own kubeconfig.
+- **Review before apply.** The Create dialog and the YAML tab show the coloured diff, the objects the change touches, kubectl's warnings and the server's dry-run result before **Apply** is enabled.
+- **Actions.** Scale, restart, roll back, cordon, drain and evict, and trigger CronJobs.
+- **Terminals.** Pod exec and attach, node shells and a local terminal scoped to the selected cluster open in a tabbed dock.
+- **Port forwards that survive.** A forward restarts on the same local port when kubectl loses its connection, and comes back when Rubban starts again.
 - **Helm.** Browse charts, and manage releases: values, history, upgrade, rollback and uninstall.
 - **Argo CD › Manage.** Refresh, hard refresh, sync, terminate, set auto-sync, roll back and delete applications, with every app's error messages listed together.
 - **RabbitMQ.** Open the management console of each RabbitMQ in the cluster inside Rubban, already signed in with its initial login.
-- **Also included.** Gateway API views, an AI CLI assistant and a read-only MCP bridge for AI tools. 
+- **Settings › Access.** See which of the permissions Rubban's features need your identity has in the current cluster and namespace, and copy the result for an administrator.
+- **Light and dark.** Follows the system theme, or pick one. A short tour shows the way around on first launch.
+- **Installer and updates.** A Windows installer that needs no administrator rights. Rubban checks GitHub Releases, verifies each download's SHA-256 and installs updates in place.
+- **Also included.** Gateway API views, an AI CLI assistant and a read-only MCP bridge for AI tools.
 
 Secret values never appear in resource lists. They are fetched when you press **Reveal**, or when you open RabbitMQ to sign in automatically using its deployment Secret.
+
+*The screenshots show two demo clusters running a sample shop.*
 
 ---
 
