@@ -103,6 +103,13 @@ if (-not $SkipInstaller -and -not $Force -and ((Test-Path (Join-Path $realInstal
 }
 Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Work, (Join-Path $Work 'out') | Out-Null
+# TEMP can be an 8.3 short path (C:\Users\HOSSAM~1\...) while the installer and Rubban report long
+# ones; work with the long form so paths compare equal.
+if (-not ('RubbanRegression.Native' -as [type])) {
+  Add-Type -Namespace RubbanRegression -Name Native -MemberDefinition '[DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern uint GetLongPathName(string shortPath, System.Text.StringBuilder longPath, uint size);'
+}
+$long = New-Object System.Text.StringBuilder 1024
+if ([RubbanRegression.Native]::GetLongPathName($Work, $long, [uint32]$long.Capacity) -gt 0) { $Work = $long.ToString() }
 $out = Join-Path $Work 'out'
 $scratchLocal = Join-Path $Work 'local'
 $scratchHome = Join-Path $Work 'home'
@@ -123,7 +130,7 @@ try {
     $script:portableExe = (Get-ChildItem (Join-Path $Work 'portable') -Recurse -Filter Rubban.exe | Select-Object -First 1).FullName
     Assert ($null -ne $portableExe) 'the zip has no Rubban.exe'
     $report = Invoke-Smoke $portableExe @{ RUBBAN_DATA_DIR = (Join-Path $Work 'portable-data') } (Join-Path $out 'portable')
-    Assert ($report.bodyLength -gt 500) "the page is nearly empty ($($report.bodyLength) characters)"
+    Assert ($report.bodyLength -gt 500) "the page is nearly empty ($($report.bodyLength) characters, ready=$($report.ready))"
     Assert (Test-Path (Join-Path $Work 'portable-data\port')) 'RUBBAN_DATA_DIR was not used'
   }
 
@@ -220,18 +227,22 @@ try {
 } catch {
   # Reported in the summary; the remaining steps depend on this one.
 } finally {
-  if ($startMenuExisted) { Copy-Item $startMenuBackup $startMenuLink -Force }
-  elseif (Test-Path $startMenuLink) { Remove-Item $startMenuLink -Force }
+  # A scratch install that is still there goes first: its uninstaller deletes the Start menu shortcut
+  # the install wrote, which is the user's own file, so the shortcut is put back after it has finished.
   if ($installed) {
     Write-Host 'Cleaning up the scratch install...'
     $unins = Get-ChildItem $app -Filter 'unins*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($unins) { With-ScratchEnv @{ LOCALAPPDATA = $scratchLocal } { Start-Process -FilePath $unins.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait }; try { Wait-Until { -not (Test-Path $app) } 90 'cleanup' } catch { Write-Host $_.Exception.Message } }
+    if ($unins) { With-ScratchEnv @{ LOCALAPPDATA = $scratchLocal } { Start-Process -FilePath $unins.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait }; try { Wait-Until { -not (Test-Path $uninstallKey) -and -not (Test-Path $app) } 90 'cleanup' } catch { Write-Host $_.Exception.Message } }
   }
+  if ($startMenuExisted) { Copy-Item $startMenuBackup $startMenuLink -Force }
+  elseif (Test-Path $startMenuLink) { Remove-Item $startMenuLink -Force }
+  $restored = (& $shortcutTarget) -eq $startMenuTarget
+  if (-not $restored) { Write-Host "WARNING: the Start menu Rubban shortcut could not be put back; the original is saved at $startMenuBackup" -ForegroundColor Yellow }
 }
 
 Write-Host ''
 $results | Format-Table -AutoSize | Out-Host
 $failed = @($results | Where-Object Result -eq 'FAIL').Count
-if (-not $KeepWork -and $failed -eq 0) { Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue }
+if (-not $KeepWork -and $failed -eq 0 -and $restored) { Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue }
 if ($failed) { Write-Host "$failed step(s) failed; outputs kept in $Work" -ForegroundColor Red; exit 1 }
 Write-Host 'All steps passed.'

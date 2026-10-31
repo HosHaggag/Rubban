@@ -1641,6 +1641,8 @@ async function init() {
   forwardsPoller.refresh();
   setupUpdates({ openSettings: () => openView('settings') });
   if (results[2].status === 'fulfilled' && !state.preferences.tourCompletedVersion) setTimeout(() => takeTour('first-run'), 600);
+  // The desktop smoke test waits for this: the startup requests have answered and the first view is drawn.
+  document.documentElement.dataset.ready = 'true';
 }
 $('#context-switcher').addEventListener('click', () => openSwitcher());
 $('#pin-context').addEventListener('click', task(toggleFavorite));
