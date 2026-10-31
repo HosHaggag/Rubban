@@ -46,7 +46,8 @@ Rubban does not create clusters or credentials. It uses the same kubeconfig and 
 | **kubectl** | Every cluster read and action | `kubectl version --client` |
 | The credential plugin your clusters use | Log-in to the cluster: `gke-gcloud-auth-plugin` for GKE, `aws` for EKS, `kubelogin` for AKS | `kubectl get ns` works in a terminal |
 | **helm** (optional) | The Helm pages | `helm version` |
-| **metrics-server** in the cluster (optional) | Live CPU and memory | `kubectl top nodes` |
+| **metrics-server** in the cluster (optional) | Problems page | `list` and `watch` on pods, deployments, statefulsets, daemonsets, jobs, persistentvolumeclaims and nodes (and Argo CD applications), in all namespaces, for every cluster with a tab open |
+| Live CPU and memory | `kubectl top nodes` |
 | **Prometheus**, Thanos or VictoriaMetrics in the cluster (optional) | Usage history and the Metrics tabs | Rubban finds it on its own |
 
 **If `kubectl get ns` works in your terminal, Rubban will work too.** Do this check first.
@@ -173,10 +174,11 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
    - Flux, Gateway API and Custom Resources.
    Ctrl-click (⌘-click on macOS) opens a view in a new tab.
 4. **Tabs work like a browser's.** Each tab remembers its cluster, namespace and view, so two clusters can be open side by side. **+** at the end of the tab bar (or Ctrl+T) opens another cluster in a new tab; the selector at the top left switches the *current* tab's cluster. Last session's tabs come back on the next launch.
-5. **Create and edit with a review.** In **Create** and in a resource's **YAML** tab, press **Review** to see exactly what would change (diff, objects, warnings, and the cluster's own validation or admission errors) before **Apply** unlocks. Editing the text after a review locks it again.
-6. **Expired credentials show up where you look.** A cluster whose credentials expired gets an amber ring on its tab, in the selector and on the hotbar, and a banner with **Sign in again**. It opens the terminal dock running the one command that fixes it (`gcloud auth login`, `az login` or `aws sso login --profile …`, chosen from the cluster's kubeconfig); when the login finishes, the views reconnect.
-7. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
-8. **Settings** is the gear at the bottom of the sidebar. It holds:
+5. **Problems.** The triangle button at the bottom of the left rail lists what is wrong in every cluster you have open, with a red or amber count on the button and a dot on each affected cluster's tab. Click a row to open the resource (switching the current tab to that cluster), or use **Logs** and **Snooze 1 h**. Closing the last tab of a cluster removes its problems.
+6. **Create and edit with a review.** In **Create** and in a resource's **YAML** tab, press **Review** to see exactly what would change (diff, objects, warnings, and the cluster's own validation or admission errors) before **Apply** unlocks. Editing the text after a review locks it again.
+7. **Expired credentials show up where you look.** A cluster whose credentials expired gets an amber ring on its tab, in the selector and on the hotbar, and a banner with **Sign in again**. It opens the terminal dock running the one command that fixes it (`gcloud auth login`, `az login` or `aws sso login --profile …`, chosen from the cluster's kubeconfig); when the login finishes, the views reconnect.
+8. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
+9. **Settings** is the gear at the bottom of the sidebar. It holds:
    - what your identity may do in the current cluster (**Access**);
    - the Prometheus service used for each cluster (or none);
    - the node shell image;

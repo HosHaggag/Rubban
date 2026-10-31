@@ -8,7 +8,7 @@ import { setupUpdates, updatesPanel } from './updates.js';
 import { formatCPU, formatBytes, formatPercent, parseCPU, parseMemory } from './format.js';
 import { lineChart, meter } from './charts.js';
 import { kindColumns, pageContext, needsPods, usesUsage, podScopeFor, searchTextFor, eventColumns, eventTime, involved, usageCell, controllerOf, resourceForKind, isControlPlane, nodeCondition } from './kinds.js';
-import { rowMenu, bulkActions, openExternal as openExternalLink } from './ops.js';
+import { rowMenu, bulkActions, logsFor, openExternal as openExternalLink } from './ops.js';
 import { kindOverview, kindMetrics, detailActions, metricsView } from './details.js';
 import { openLogs, openTerminal, setupDock, toggleDock, localShellTarget } from './dock.js';
 import { clusterQueries } from './promql.js';
@@ -19,6 +19,7 @@ import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErr
 import { rabbitmqPage } from './rabbitmq.js';
 import * as credentials from './credentials.js';
 import { reviewBar } from './review.js';
+import { createProblemStore } from './problems.js';
 import { searchContexts, groupByKind, resultDetail, searchable } from './search.js';
 import { permissionText, scopeText, groupByFeature, asText, summary } from './access.js';
 import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
@@ -69,6 +70,7 @@ const ICONS = {
   metrics: 'M2.5 13.5h11 M4.5 11V8 M8 11V4.5 M11.5 11V6.5',
   security: 'M8 1.8 13.5 4v4c0 3.2-2.3 5.5-5.5 6.4C4.8 13.5 2.5 11.2 2.5 8V4z M5.6 8l1.7 1.7 3.1-3.3',
   team: 'M8.2 4.75a2.25 2.25 0 1 1-4.5 0a2.25 2.25 0 1 1 4.5 0z M1.8 13.5c.5-2.3 2.1-3.5 4.2-3.5s3.7 1.2 4.2 3.5 M10.5 2.8a2 2 0 0 1 0 3.9 M11.6 10.1c1.4.4 2.4 1.5 2.7 3.4',
+  alert: 'M8 2l6.5 11.5h-13z M8 6.5v3 M8 11.6h.01',
   ai: 'M8 1.5l1.4 3.6 3.6 1.4-3.6 1.4L8 11.5 6.6 7.9 3 6.5l3.6-1.4z M12.5 10.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z',
   settings: 'M10 8a2 2 0 1 1-4 0a2 2 0 1 1 4 0z M12.5 8a4.5 4.5 0 1 1-9 0a4.5 4.5 0 1 1 9 0z M8 1.5v2 M8 12.5v2 M1.5 8h2 M12.5 8h2 M3.4 3.4l1.4 1.4 M11.2 11.2l1.4 1.4 M3.4 12.6l1.4-1.4 M11.2 4.8l1.4-1.4',
   gitops: 'M5.5 3.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M5.5 12.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M13.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M4 5v6 M4 8h6.5',
@@ -137,6 +139,7 @@ const EXTRA_VIEWS = [
   leaf('AI assistant', 'ai', undefined, { icon: 'ai' }),
   leaf('Clusters', 'clusters', undefined, { icon: 'cluster' }),
   leaf('Settings', 'settings', undefined, { icon: 'settings' }),
+  leaf('Problems', 'problems', undefined, { icon: 'alert' }),
 ];
 const BUILTIN_GROUP = group => !group || ['apps', 'batch', 'autoscaling', 'policy'].includes(group) || (group.endsWith('.k8s.io') && group !== 'autoscaling.k8s.io');
 // Custom resources come from the cluster's CRDs (live), or from discovery when CRDs cannot be listed.
@@ -269,9 +272,11 @@ function renderTabs() {
   $('#tabbar').replaceChildren(...state.tabs.map(tab => {
     const meta = tab.context ? infoFor(tab.context) : null;
     const expired = tab.context && credentials.isExpired(tab.context);
-    const mark = meta ? el('span', { class: `tab-cluster${expired ? ' auth-expired' : ''}`, style: `color:${meta.color}` }, clusterIcon(meta.icon)) : null;
+    const found = tab.context ? problemsStore.countsFor(tab.context) : { critical: 0, warning: 0 };
+    const dot = found.critical ? 'critical' : found.warning ? 'warning' : '';
+    const mark = meta ? el('span', { class: `tab-cluster${expired ? ' auth-expired' : ''}`, style: `color:${meta.color}` }, clusterIcon(meta.icon), dot ? el('i', { class: `tab-dot ${dot}` }) : null) : null;
     const node = button([mark, icon(tab.icon || allNav().find(item => sameView(item, tab))?.icon || allNav().find(item => sameView(item, tab))?.trail?.[0]?.icon || 'overview', 'ui-svg tab-svg'), el('span', { class: 'tab-title', text: clustersOpen && meta ? `${meta.label} · ${tab.title}` : tab.title }), el('span', { class: 'tab-close', title: `Close tab (${MOD}+W)`, role: 'button', 'aria-label': `Close ${tab.title}`, onclick: event => { event.stopPropagation(); closeTab(tab.id); }, text: '×' })], () => activateTab(tab.id), `tab${state.active === tab.id ? ' active' : ''}`);
-    node.title = meta ? `${meta.label} · ${tab.context}${tab.namespace !== '*' ? ` · ${tab.namespace}` : ''}${expired ? ` — credentials expired${credentials.authOf(tab.context).message ? `: ${credentials.authOf(tab.context).message}` : ''}` : ''}` : 'No cluster';
+    node.title = meta ? `${meta.label} · ${tab.context}${tab.namespace !== '*' ? ` · ${tab.namespace}` : ''}${expired ? ` — credentials expired${credentials.authOf(tab.context).message ? `: ${credentials.authOf(tab.context).message}` : ''}` : ''}${dot ? ` — ${found.critical ? `${found.critical} critical` : ''}${found.critical && found.warning ? ', ' : ''}${found.warning ? `${found.warning} warning${found.warning === 1 ? '' : 's'}` : ''}` : ''}` : 'No cluster';
     node.addEventListener('auxclick', event => { if (event.button === 1) { event.preventDefault(); closeTab(tab.id); } });
     node.setAttribute('role', 'tab'); node.setAttribute('aria-selected', state.active === tab.id ? 'true' : 'false'); return node;
   }), el('button', { type: 'button', class: 'tab-new', title: `Open a cluster in a new tab (${MOD}+T)`, 'aria-label': 'Open a cluster in a new tab', onclick: () => openSwitcher({ newTab: true }), text: '+' }));
@@ -282,6 +287,93 @@ function renderTabs() {
   document.querySelectorAll('.rail-button[data-section]').forEach(node => { const active = node.dataset.section === tab.section; node.classList.toggle('active', active); railMatched ||= active; });
   $('#workspace-button').classList.toggle('active', !railMatched);
   renderAuthBanner();
+  problemsStore.sync(state.tabs.map(item => item.context));
+}
+// ---- Problems inbox -----------------------------------------------------------------------------
+const problemsStore = createProblemStore({
+  liveList, readStore, writeStore,
+  hasArgo: context => Boolean(cacheOf(context).crds?.some(crd => crd.metadata?.name === 'applications.argoproj.io')),
+  onChange: () => problemsChanged(),
+});
+let problemsPageRefresh = null;
+function problemsChanged() {
+  const totals = problemsStore.totals();
+  const badgeNode = $('#problems-badge');
+  const count = totals.critical || totals.warning;
+  badgeNode.textContent = count > 99 ? '99+' : String(count || '');
+  badgeNode.className = `rail-badge ${totals.critical ? 'critical' : totals.warning ? 'warning' : 'hidden'}`;
+  $('#problems-button').title = count ? `${totals.critical} critical, ${totals.warning} warning${totals.warning === 1 ? '' : 's'} in your open clusters` : 'Problems in your open clusters';
+  renderTabs();
+  problemsPageRefresh?.();
+}
+const PROBLEM_KINDS = { pods: 'Pod', deployments: 'Deployment', statefulsets: 'StatefulSet', daemonsets: 'DaemonSet', jobs: 'Job', persistentvolumeclaims: 'PVC', nodes: 'Node', 'applications.argoproj.io': 'Application', cluster: 'Cluster' };
+async function openProblem(problem) {
+  if (problem.context !== state.context) await selectContext(problem.context, { namespace: '*' });
+  if (problem.resource !== 'cluster') showResource({ metadata: { name: problem.name, namespace: problem.namespace } }, problem.resource);
+}
+async function podLogsOf(problem) {
+  if (problem.context !== state.context) await selectContext(problem.context, { namespace: '*' });
+  const item = await get('/api/resource', { context: problem.context, namespace: problem.namespace, resource: 'pods', name: problem.name });
+  logsFor({ context: problem.context, namespace: problem.namespace, resource: 'pods', name: problem.name, item });
+}
+const problemFilters = { severities: new Set(['critical', 'warning', 'info']), context: '', namespace: '', onlyTab: false };
+function problemsPage() {
+  const signal = state.pageAbort.signal;
+  const root = page('Problems', 'What is wrong in every cluster you have open: crash loops, pods that cannot start, workloads below their replica count, unhealthy nodes and Argo CD applications.');
+  const chips = el('div', { class: 'chips filter-chips' }, ['critical', 'warning', 'info'].map(severity => {
+    const chip = el('button', { type: 'button', class: `chip-button ${severity}${problemFilters.severities.has(severity) ? ' on' : ''}`, 'aria-pressed': String(problemFilters.severities.has(severity)) }, severity);
+    chip.addEventListener('click', () => { if (problemFilters.severities.has(severity)) problemFilters.severities.delete(severity); else problemFilters.severities.add(severity); chip.classList.toggle('on'); chip.setAttribute('aria-pressed', String(problemFilters.severities.has(severity))); draw(); });
+    return chip;
+  }));
+  const clusterSelect = el('select', { 'aria-label': 'Cluster' });
+  const namespaceInput = el('input', { type: 'search', placeholder: 'Namespace', 'aria-label': 'Namespace filter', value: problemFilters.namespace });
+  const onlyTab = el('input', { type: 'checkbox', checked: problemFilters.onlyTab });
+  const list = el('div', { class: 'problems-list' });
+  root.append(el('div', { class: 'form-actions start problems-filters' }, chips, clusterSelect, namespaceInput, el('label', { class: 'inline-label' }, onlyTab, " Only this tab's cluster")), list);
+  const fillClusters = () => { clusterSelect.replaceChildren(el('option', { value: '', text: 'All clusters' }), ...problemsStore.contexts().map(context => el('option', { value: context, text: labelFor(context) }))); clusterSelect.value = problemFilters.context; };
+  clusterSelect.addEventListener('change', () => { problemFilters.context = clusterSelect.value; draw(); });
+  namespaceInput.addEventListener('input', () => { problemFilters.namespace = namespaceInput.value.trim(); draw(); });
+  onlyTab.addEventListener('change', () => { problemFilters.onlyTab = onlyTab.checked; draw(); });
+  function row(problem) {
+    const actionsNode = el('span', { class: 'problem-actions' },
+      problem.credentials ? button('Sign in again', event => { event.stopPropagation(); signIn(problem.context).catch(error => toast(error.message, true)); }, 'compact') : null,
+      problem.resource === 'pods' ? button('Logs', event => { event.stopPropagation(); task(() => podLogsOf(problem))(); }, 'compact quiet') : null,
+      problem.resource === 'cluster' ? null : button('Open', event => { event.stopPropagation(); task(() => openProblem(problem))(); }, 'compact quiet'),
+      button('Snooze 1 h', event => { event.stopPropagation(); problemsStore.snooze(problem.id); }, 'compact quiet'));
+    const node = el('div', { class: 'problem-row', role: 'button', tabindex: '0', title: problem.detail },
+      el('i', { class: `severity-dot ${problem.severity}`, title: problem.severity }),
+      el('span', { class: 'problem-what' }, el('span', { class: 'problem-kind', text: PROBLEM_KINDS[problem.resource] || problem.resource }), el('strong', { text: problem.name })),
+      el('span', { class: 'problem-ns muted', text: problem.namespace }),
+      el('span', { class: 'problem-title' }, el('span', { text: problem.title }), problem.detail ? el('small', { class: 'muted', text: problem.detail }) : null),
+      el('span', { class: 'problem-since muted', text: problem.since ? age(problem.since) : '' }),
+      actionsNode);
+    const open = () => { if (problem.resource === 'cluster') { if (problem.context !== state.context) task(() => selectContext(problem.context, { namespace: '*' }))(); } else task(() => openProblem(problem))(); };
+    node.addEventListener('click', open);
+    node.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target === node) open(); });
+    return node;
+  }
+  function draw() {
+    fillClusters();
+    const tabContext = activeTab().context;
+    const shown = problemsStore.all().filter(problem => problemFilters.severities.has(problem.severity)
+      && (!problemFilters.context || problem.context === problemFilters.context)
+      && (!problemFilters.onlyTab || problem.context === tabContext)
+      && (!problemFilters.namespace || (problem.namespace || '').includes(problemFilters.namespace)));
+    const contexts = problemsStore.contexts();
+    if (!shown.length) { list.replaceChildren(empty(contexts.length ? `Nothing to report in ${contexts.length} cluster${contexts.length === 1 ? '' : 's'}` : 'No clusters are being watched yet', contexts.length ? 'Pods, workloads, nodes and Argo CD applications look healthy.' : 'Open a cluster and its problems appear here.', undefined, contexts.length ? '✓' : '◈')); return; }
+    const nodes = [];
+    for (const context of [...new Set(shown.map(problem => problem.context))]) {
+      const meta = infoFor(context);
+      nodes.push(el('div', { class: 'problem-cluster' }, el('span', { class: 'tab-cluster', style: `color:${meta.color}` }, clusterIcon(meta.icon)), el('strong', { text: meta.label }), el('span', { class: 'muted', text: `${shown.filter(problem => problem.context === context).length} problems` })));
+      nodes.push(...shown.filter(problem => problem.context === context).map(row));
+    }
+    list.replaceChildren(...nodes);
+  }
+  draw();
+  problemsPageRefresh = draw;
+  const timer = setInterval(draw, 30000);
+  signal.addEventListener('abort', () => { clearInterval(timer); if (problemsPageRefresh === draw) problemsPageRefresh = null; }, { once: true });
+  return root;
 }
 // ---- Credential health --------------------------------------------------------------------------
 // A cluster whose credentials expired is marked on its tab, in the switcher and on the hotbar, and the
@@ -510,7 +602,7 @@ async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
   saveTabs();
   if (!name) return;
   liveList({ resource: 'customresourcedefinitions', context: name, namespace: '*', signal: contextAbort.signal,
-    onData: items => { cache.crds = items; if (state.context === name) { state.crds = items; navigation(); } },
+    onData: items => { cache.crds = items; problemsStore.sync(state.tabs.map(tab => tab.context)); if (state.context === name) { state.crds = items; navigation(); } },
     onError: () => { if (state.context === name) { state.crds = null; navigation(); } } });
   let namespacesLoaded = false;
   liveList({ resource: 'namespaces', context: name, namespace: '*', signal: contextAbort.signal,
@@ -560,7 +652,7 @@ async function render() {
   const id = ++state.renderId;
   const tab = activeTab();
   $('#status-message').textContent = state.context ? (state.namespace === '*' ? 'all namespaces' : state.namespace) : 'Ready';
-  const globalPages = ['settings', 'ai', 'forwards', 'helm-charts', 'clusters'];
+  const globalPages = ['settings', 'ai', 'forwards', 'helm-charts', 'clusters', 'problems'];
   if (!state.context && !globalPages.includes(tab.section)) { $('#main').replaceChildren(welcome()); return; }
   $('#main').replaceChildren(loading());
   try {
@@ -580,12 +672,15 @@ async function render() {
       case 'discovery': node = discoveryPage(); break;
       case 'settings': node = await settingsPage(); break;
       case 'clusters': node = await clustersPage(); break;
+      case 'problems': node = problemsPage(); break;
       case 'ai': node = aiPage(); break;
       default: node = empty('View not available', 'Select a view from the sidebar.');
     }
     if (id === state.renderId) {
       $('#main').replaceChildren(node);
       if (state.scrollTarget) { document.getElementById(state.scrollTarget)?.scrollIntoView(); state.scrollTarget = ''; }
+      // The problems inbox starts watching a cluster once a tab on it has been drawn.
+      if (state.context) problemsStore.contextRendered(state.context);
     }
   } catch (error) { if (id === state.renderId) $('#main').replaceChildren(displayError(error)); }
 }
