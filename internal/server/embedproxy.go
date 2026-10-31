@@ -24,6 +24,13 @@ import (
 // UI) can be shown inside Rubban:
 //   - it runs on its own port, so the console is a different origin from Rubban and cannot reach
 //     Rubban's API token or DOM;
+//   - every response asks for an origin-keyed agent cluster (Origin-Agent-Cluster: ?1), so the web
+//     view runs the console in a process of its own. Chromium otherwise keeps it in Rubban's
+//     process, since ports do not count towards a site, and the RabbitMQ console signs in and
+//     starts with synchronous requests through the tunnel: each one froze all of Rubban until the
+//     cluster answered, and for good when a stream stalled. The console stays same-site with
+//     Rubban (127.0.0.1), where the session cookie it sets without SameSite keeps working;
+//     another host would make it a third-party frame, and that cookie is refused there;
 //   - only Rubban's window may frame it (frame-ancestors), and X-Frame-Options is dropped;
 //   - a small bridge script is added to the console's HTML page. It accepts one message from the
 //     Rubban window (checked by origin) carrying the login, and fills the console's own login form,
@@ -166,6 +173,9 @@ type embedProxyOptions struct {
 	parentOrigins []string
 	upstreamTLS   bool
 	maxHTMLBytes  int
+	// responseTimeout bounds the wait for the console's response headers (default 30 s). A stream
+	// of the port forward can stall without closing; a request on it would otherwise wait forever.
+	responseTimeout time.Duration
 	// credentials, when set, enables /__rubban/login for the page's bridge.
 	credentials func(ctx context.Context) (any, error)
 	// log receives one line per failed request.
@@ -188,6 +198,9 @@ func newEmbedProxy(opts embedProxyOptions) (*embedProxy, error) {
 	if opts.maxHTMLBytes <= 0 {
 		opts.maxHTMLBytes = 2 * 1024 * 1024
 	}
+	if opts.responseTimeout <= 0 {
+		opts.responseTimeout = 30 * time.Second
+	}
 	p := &embedProxy{opts: opts}
 	if opts.credentials != nil {
 		raw := make([]byte, 32)
@@ -196,13 +209,16 @@ func newEmbedProxy(opts embedProxyOptions) (*embedProxy, error) {
 	}
 	// Connections to the tunnel are kept alive: every new one is a new stream in kubectl's port
 	// forward, and creating streams is what times out when the API server connection is flaky.
+	// A stream can also stall without closing, so the wait for response headers is bounded; the
+	// timeout closes that connection and forward retries a GET once on a fresh one.
 	// An HTTPS console's certificate names the cluster service, not 127.0.0.1, so it is not verified.
 	p.transport = &http.Transport{
-		MaxConnsPerHost:     6,
-		MaxIdleConnsPerHost: 6,
-		IdleConnTimeout:     90 * time.Second,
-		DisableCompression:  true,
-		DialContext:         (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+		MaxConnsPerHost:       6,
+		MaxIdleConnsPerHost:   6,
+		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout: opts.responseTimeout,
+		DisableCompression:    true,
+		DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
 	}
 	if opts.upstreamTLS {
 		p.transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12} // #nosec G402 -- the tunnel ends at 127.0.0.1; the console certificate names the cluster service
@@ -224,19 +240,26 @@ func (p *embedProxy) close() {
 }
 
 // embedWriter remembers whether the response has started, so a failure after that point can only
-// abort the connection.
+// abort the connection. It also gives every response, whichever path writes it, the header that
+// keeps the console in a process of its own: the browser fixes an origin's agent cluster the
+// first time a document from it loads, so no response from this origin may go without it.
 type embedWriter struct {
 	http.ResponseWriter
 	started bool
 }
 
 func (w *embedWriter) WriteHeader(status int) {
+	if !w.started {
+		w.ResponseWriter.Header().Set("Origin-Agent-Cluster", "?1")
+	}
 	w.started = true
 	w.ResponseWriter.WriteHeader(status)
 }
 
 func (w *embedWriter) Write(data []byte) (int, error) {
-	w.started = true
+	if !w.started {
+		w.WriteHeader(http.StatusOK)
+	}
 	return w.ResponseWriter.Write(data)
 }
 

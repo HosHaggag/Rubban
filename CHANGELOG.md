@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.1: The RabbitMQ console no longer freezes Rubban
+
+- **Opening a RabbitMQ console no longer freezes the window.** The management console signs in and starts with requests that hold its page until the cluster answers, and it ran in the same web view process as Rubban's own page. Every one of those answers came through the cluster tunnel, so the whole window stopped responding, and went blank when it had to repaint, until they arrived; when a tunnel connection stalled, it stayed that way until Rubban was closed. The console now runs in a process of its own: a slow or stuck cluster holds up the console only, and the rest of Rubban keeps working.
+- **A stalled console request gives up after 30 seconds** instead of waiting forever. A read is tried once more over a fresh tunnel connection, which usually answers at once.
+
 ## 0.13.0: Next features
 
 - **Compare a resource across clusters.** **Compare…** in a resource's details opens a tab with its YAML on two sides, for example the same Deployment in prod and staging (or in two namespaces). `managedFields`, `uid`, `resourceVersion`, timestamps and `status` are left out and keys are sorted, so what you see is what someone configured. Differences are marked line by line with a one-line summary ("12 lines differ · image, replicas, env"); **Hide unchanged**, **Include status**, **Swap sides** and **Copy diff** are in the toolbar. Secrets cannot be compared.
@@ -11,6 +16,7 @@
 - **Settings › Access answers "can I?".** For the current cluster and namespace it asks the API server which of the permissions Rubban's features need (browse, logs, exec, secrets, metrics, edit, scale, delete, node shell, Helm, Argo CD, …) your identity has, shows ✓/✗ with the reason, and copies the result as text for an administrator. A 403 error page offers **Check my access**, and the Clusters page has an **Access** button per cluster.
 - **Port forwards survive.** A forward you create is restarted on the same local port when `kubectl port-forward` loses its connection (after 1, 2, 4 … 30 seconds, up to ten tries; **Restart** skips the wait), and it comes back when Rubban starts again, from `forwards.json` in the data folder. A forward whose port is taken stays listed with the reason. The Port Forwarding page shows each forward's cluster and restart count, and the sidebar entry shows how many are running.
 - **Expired credentials are named, with the fix one click away.** When a cluster's credentials expire (or its `gke-gcloud-auth-plugin`, `kubelogin` or `aws` plugin fails), the tab, the cluster selector and the hotbar get an amber ring and a banner says so. **Sign in again** runs `gcloud auth login`, `az login` or `aws sso login` for that cluster in the terminal dock; when the login finishes the views reconnect by themselves. Settings › Prerequisites lists every cluster's sign-in state.
+
 ## 0.12.2: Cluster tabs
 
 - **Tabs work like a browser's.** Every tab remembers its cluster, namespace and view, so two clusters can be open side by side and switching between them is one click. The **+** button (or Ctrl+T) opens a cluster in a new tab; Ctrl+W closes a tab, Ctrl+Tab cycles, middle-click closes. Tabs show their cluster's icon and colour, and the cluster name once more than one cluster is open. Last session's tabs come back on the next launch. What a cluster already reported (namespaces, custom resources, API discovery) is kept while another tab is active, so coming back is instant.

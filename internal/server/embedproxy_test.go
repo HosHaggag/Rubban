@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // embedTestGet fetches with the stock client; the proxy is under test, not the client.
@@ -298,6 +299,111 @@ func TestEmbedProxyFollowsRestartedUpstream(t *testing.T) {
 	}
 	if _, body := embedTestGet(t, base+"/api/overview", nil); portAnswer(body) != fresh {
 		t.Fatalf("after failure %q", body)
+	}
+}
+
+func TestEmbedProxyAsksForItsOwnProcessOnEveryResponse(t *testing.T) {
+	// The console's synchronous requests must not block Rubban's page, so every response from the
+	// console's origin asks for an origin-keyed agent cluster, even when the console says otherwise.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Origin-Agent-Cluster", "?0")
+		if r.URL.Path == "/" {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html><head></head><body>console</body></html>"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	t.Cleanup(upstream.Close)
+	credentials := func(context.Context) (any, error) { return map[string]string{"username": "u"}, nil }
+	p, base := embedTestProxy(t, embedProxyOptions{targetPort: embedPortOf(t, upstream.URL), parentOrigins: []string{"http://127.0.0.1:4000"}, credentials: credentials})
+	_, failing := embedTestProxy(t, embedProxyOptions{parentOrigins: []string{"http://127.0.0.1:4000"},
+		target: func(context.Context) (int, error) { return 0, errors.New("forward did not start") }})
+	check := func(what string, res *http.Response, status int) {
+		t.Helper()
+		if values := res.Header.Values("Origin-Agent-Cluster"); res.StatusCode != status || len(values) != 1 || values[0] != "?1" {
+			t.Errorf("%s: status %d, Origin-Agent-Cluster %q", what, res.StatusCode, res.Header.Values("Origin-Agent-Cluster"))
+		}
+	}
+	page, _ := embedTestGet(t, base+"/", nil)
+	check("console page", page, 200)
+	api, _ := embedTestGet(t, base+"/api/overview", nil)
+	check("console API", api, 200)
+	bridge, _ := embedTestGet(t, base+embedBridgePath, nil)
+	check("bridge script", bridge, 200)
+	login, _ := embedTestGet(t, base+"/__rubban/login", map[string]string{"X-Rubban-Embed-Token": p.loginToken})
+	check("login", login, 200)
+	refused, _ := embedTestGet(t, base+"/__rubban/login", nil)
+	check("login without the token", refused, 403)
+	down, _ := embedTestGet(t, failing+"/", nil)
+	check("forward down", down, 502)
+	req, _ := http.NewRequest("GET", base+"/", nil)
+	req.Host = fmt.Sprintf("attacker.example:%d", p.port)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	check("wrong Host", res, 403)
+}
+
+func TestEmbedProxyStalledStreamTimesOut(t *testing.T) {
+	// A stream of the port forward stalls without closing: the first request on it never gets an
+	// answer. A GET is retried once on a fresh connection and answered; a request with a body
+	// cannot be replayed, so it fails once the timeout passes instead of waiting forever.
+	release := make(chan struct{})
+	var mu sync.Mutex
+	stalls := 1
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		stalled := stalls > 0 || r.Method == http.MethodPost
+		if stalls > 0 {
+			stalls--
+		}
+		mu.Unlock()
+		if stalled {
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(upstream.Close)
+	t.Cleanup(func() { close(release) }) // runs first, so Close never waits on a stalled handler
+	var logged []string
+	_, base := embedTestProxy(t, embedProxyOptions{targetPort: embedPortOf(t, upstream.URL), parentOrigins: []string{"http://127.0.0.1:4000"},
+		responseTimeout: 300 * time.Millisecond,
+		log: func(m string) {
+			mu.Lock()
+			logged = append(logged, m)
+			mu.Unlock()
+		}})
+
+	start := time.Now()
+	res, body := embedTestGet(t, base+"/api/vhosts", nil)
+	if res.StatusCode != 200 || body != "ok" {
+		t.Fatalf("GET %d %q", res.StatusCode, body)
+	}
+	if took := time.Since(start); took < 300*time.Millisecond || took > 5*time.Second {
+		t.Fatalf("GET answered after %v", took)
+	}
+
+	post, err := http.Post(base+"/api/queues/%2F/x", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, _ := io.ReadAll(post.Body)
+	_ = post.Body.Close()
+	if post.StatusCode != 502 || !strings.Contains(string(text), "timeout awaiting response headers") {
+		t.Fatalf("POST %d %q", post.StatusCode, text)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(logged) != 1 || !strings.HasPrefix(logged[0], "Console request POST /api/queues/%2F/x failed: ") {
+		t.Fatalf("log %v", logged)
 	}
 }
 
