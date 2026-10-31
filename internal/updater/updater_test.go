@@ -179,16 +179,6 @@ func (h *harness) serve(r *http.Request) (*http.Response, error) {
 	return resp(200, &chunkReader{data: append([]byte(nil), body...), chunk: h.chunk}, nil)
 }
 
-func (h *harness) statuses() []string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	var out []string
-	for _, s := range h.states {
-		out = append(out, s.Status)
-	}
-	return out
-}
-
 func (h *harness) zipPath() string { return filepath.Join(h.dataDir, "updates", h.name) }
 
 func (h *harness) readyUpdate() {

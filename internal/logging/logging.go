@@ -36,7 +36,7 @@ func New(dir string, maxBytes int64, keep int) *Logger {
 		keep = DefaultKeep
 	}
 	l := &Logger{Dir: dir, File: filepath.Join(dir, "rubban.log"), maxBytes: maxBytes, keep: keep}
-	if err := os.MkdirAll(dir, 0o755); err == nil {
+	if err := os.MkdirAll(dir, 0o700); err == nil {
 		if st, err := os.Stat(l.File); err == nil {
 			l.size = st.Size()
 		}

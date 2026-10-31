@@ -112,14 +112,6 @@ func (c accessCheck) resolved(requested, prometheusNS string) accessCheck {
 	return c
 }
 
-func (c accessCheck) resourceName() string {
-	name := c.Resource
-	if c.Subresource != "" {
-		name += "/" + c.Subresource
-	}
-	return name
-}
-
 // canIArgs is the `kubectl auth can-i` command line of a check.
 func (c accessCheck) canIArgs(kubeContext string, allNamespaces bool) []string {
 	// kubectl wants resource.group (pods.metrics.k8s.io); a subresource is a flag, because pods/log

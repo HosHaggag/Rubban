@@ -525,5 +525,3 @@ func (b *Backend) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	b.handleStream(w, r)
 }
-
-var errNotFound = errors.New("API route not found")

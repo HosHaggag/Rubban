@@ -279,6 +279,12 @@ Rubban uses bundled tools first and falls back to the ones on PATH.
 
 ---
 
+### 5.6 Security scans
+
+`scripts/sast.sh` runs the static scans used before a release and writes the reports to `sast-out/`: govulncheck (reachable Go vulnerabilities), gosec, staticcheck, Semgrep (Go, JavaScript, GitHub Actions and secrets rule packs), gitleaks (working tree and history), Trivy and `npm audit`. The tools are installed on first use (Go tools into `$GOPATH/bin`, Semgrep into a Python venv). Findings that are accepted by design are listed at the top of the script, with the reason; `.gitleaks.toml` and `.gitguardian.yaml` exclude test fixtures and the vendored terminal bundle from secret scanning. Keep the `go` line in `go.mod` on the latest patch release: govulncheck reports standard-library fixes against it, and the release workflow builds with exactly that version.
+
+---
+
 ## 6. Permissions each feature needs
 
 Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works. Every view degrades gracefully: you see a clear message instead of an error page.

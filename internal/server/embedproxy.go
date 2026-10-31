@@ -205,7 +205,7 @@ func newEmbedProxy(opts embedProxyOptions) (*embedProxy, error) {
 		DialContext:         (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
 	}
 	if opts.upstreamTLS {
-		p.transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		p.transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12} // #nosec G402 -- the tunnel ends at 127.0.0.1; the console certificate names the cluster service
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

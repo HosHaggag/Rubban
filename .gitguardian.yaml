@@ -1,0 +1,11 @@
+# GitGuardian: test fixtures hold made-up credentials by design (for example the Secret the search
+# test uses to prove values never leave the server); the vendored terminal bundles are minified
+# third-party code.
+version: 2
+secret:
+  ignored_paths:
+    - "**/*_test.go"
+    - "ui/*.test.mjs"
+    - "ui/xterm.js"
+    - "ui/vendor.js"
+    - "ui/addon-fit.js"

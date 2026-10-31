@@ -97,7 +97,7 @@ func (s *shell) run() int {
 	home, _ := os.UserHomeDir()
 	cwd, _ := os.Getwd()
 	s.dataDir = DataDir(exe, runtime.GOOS, home, cwd, os.Getenv)
-	if err := os.MkdirAll(s.dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(s.dataDir, 0o700); err != nil {
 		return s.fatal(err)
 	}
 	// A build put in place by the installer starts with the settings of the layout it replaces.

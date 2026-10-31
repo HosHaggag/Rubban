@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"sort"
 	"strings"
 	"sync"
@@ -130,7 +130,7 @@ func backoff(attempt int, max time.Duration) time.Duration {
 	if base > max {
 		base = max
 	}
-	return time.Duration(float64(base) * (0.75 + rand.Float64()*0.5))
+	return time.Duration(float64(base) * (0.75 + rand.Float64()*0.5)) // #nosec G404 -- backoff jitter, not a secret
 }
 
 func isSecretTarget(t Resource) bool { return t.Group == "" && t.Name == "secrets" }

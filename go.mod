@@ -1,6 +1,6 @@
 module github.com/HosHaggag/rubban
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/aymanbagabas/go-pty v0.2.3

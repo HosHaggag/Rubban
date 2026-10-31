@@ -22,8 +22,6 @@ const (
 	xtermFitVersion = "0.11.0"
 )
 
-type npmFile struct{ from, to string }
-
 // fetchNPMFiles downloads a package tarball, verifies it against the registry's dist.integrity and
 // returns the requested files.
 func fetchNPMFiles(client *http.Client, pkg, version string, wanted []string) (map[string][]byte, error) {

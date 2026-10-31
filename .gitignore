@@ -14,4 +14,4 @@ data/
 Thumbs.db
 .claude/
 *.syso
-PLAN*
+PLAN*sast-out/
