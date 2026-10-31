@@ -194,10 +194,11 @@ try {
       Assert ($null -ne $unins) 'no uninstaller in the install folder'
       $code = With-ScratchEnv @{ LOCALAPPDATA = $scratchLocal } { $p = Start-Process -FilePath $unins.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru; Wait-Exit $p 120 'the uninstaller' }
       Assert ($code -eq 0) "the uninstaller exited with $code"
-      # The uninstaller finishes from a copy of itself in TEMP after the original exits.
-      Wait-Until { -not (Test-Path $uninstallKey) -and -not (Test-Path (Join-Path $app 'Rubban.exe')) } 60 'removal of the program'
+      # The uninstaller finishes from a copy of itself in TEMP after the original exits, removing the
+      # install folder last; wait for the folder itself, and say what is left when it never goes.
+      try { Wait-Until { -not (Test-Path $uninstallKey) -and -not (Test-Path $app) } 90 'removal of the program' }
+      catch { $left = if (Test-Path $app) { (Get-ChildItem $app -Recurse -Force | Select-Object -ExpandProperty FullName) -join ', ' } else { 'registry key only' }; throw "$($_.Exception.Message); still present: $left" }
       $script:installed = $false
-      Assert (-not (Test-Path $app)) "the install folder $app is still there"
       Assert (-not (Test-Path $startMenuLink)) 'the Start menu shortcut is still there'
       Assert (Test-Path (Join-Path $scratchLocal 'Rubban\preferences.json')) 'the settings were deleted although the default answer is No'
     }
@@ -208,7 +209,7 @@ try {
   if ($installed) {
     Write-Host 'Cleaning up the scratch install...'
     $unins = Get-ChildItem $app -Filter 'unins*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($unins) { With-ScratchEnv @{ LOCALAPPDATA = $scratchLocal } { Start-Process -FilePath $unins.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait } ; Start-Sleep -Seconds 5 }
+    if ($unins) { With-ScratchEnv @{ LOCALAPPDATA = $scratchLocal } { Start-Process -FilePath $unins.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait }; try { Wait-Until { -not (Test-Path $app) } 90 'cleanup' } catch { Write-Host $_.Exception.Message } }
   }
 }
 
