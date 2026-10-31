@@ -1,6 +1,6 @@
 # Rubban — next features (implementation plan)
 
-Written for the model that implements it. Eight features, each self-contained, in the order to build them. Everything below refers to the code as of commit `1896293` (0.12.2: Go backend, Wails shell, plain ES-module UI). `PLAN.md` and `PLAN-GO.md` are historical — do not follow them.
+Written for the model that implements it. Nine features, each self-contained, in the order to build them. Everything below refers to the code as of commit `1896293` (0.12.2: Go backend, Wails shell, plain ES-module UI). `PLAN.md` and `PLAN-GO.md` are historical — do not follow them.
 
 ---
 
@@ -29,7 +29,33 @@ Written for the model that implements it. Eight features, each self-contained, i
 
 **Per feature:** one commit; a bullet under a new `## 0.13.0` section in `CHANGELOG.md`; README §4 (usage) and §6 (permissions) updated where they apply; tests listed in the section added and passing.
 
-**Order:** 2 → 6 → 9 → 4 → 3 → 1 → 5 → 7. Feature 7 reuses the diff renderer from feature 4; feature 1 and 3 reuse the per-tab contexts from the tab work already landed. Numbers below keep the numbering of the original list (8 and 10 are intentionally absent).
+**Order:** 11 → 2 → 6 → 9 → 4 → 3 → 1 → 5 → 7. Feature 11 (installer, fixed data folder) goes first so every release after it keeps the user's settings; feature 7 reuses the diff renderer from feature 4; features 1 and 3 reuse the per-tab contexts from the tab work already landed. Numbers below keep the numbering of the original list (8 and 10 are intentionally absent).
+
+---
+
+## 11. Windows installer and a fixed data folder (S–M)
+
+**Goal.** Today the data folder is `..\Rubban-Data` relative to `Rubban.exe` (`internal/app/paths.go` `DataDir`), so every zip extracted into a new `Downloads\Rubban-<version>-Windows-x64` folder starts with empty settings, imports and cluster labels. `Install-Rubban.ps1` solves it but nobody runs a script from a zip. Ship a real installer that puts the program in a fixed per-user location and the data in `%LOCALAPPDATA%\Rubban`, with the in-app updater keeping both in step. The zip stays as the portable download.
+
+**Data folder (Go).**
+- `internal/app/paths.go`: `DataDir` gains a rule between `RUBBAN_DATA_DIR` and the packaged default: when `installed.json` exists next to the exe (written by the installer, `{"installer":"inno","version":"0.13.0"}`), return `filepath.Join(env("LOCALAPPDATA"), "Rubban")` (Local, not Roaming: it holds kubeconfig copies and logs). Add `Installed(exe) bool`. Portable zips keep `..\Rubban-Data`; macOS unchanged.
+- One-time migration in `internal/app/run_desktop.go` before the backend starts, only for installed builds and only when the new data folder has no `preferences.json`: look for, in this order, `%USERPROFILE%\Rubban\Rubban-Data` (old `Install-Rubban.ps1` layout) and `<folder the installer recorded in installed.json as "migratedFrom">` — the installer sets that key when it finds a `Rubban-Data` next to the folder it was run from (the `Setup.exe` sits in `Downloads`, so also check `Downloads\Rubban-*-Windows-x64\..\Rubban-Data` siblings of the setup file's directory). Copy (never move) `preferences.json`, `kubeconfigs\`, `port`, and the `updates\` folder is skipped; write `migrated-from.txt` in the new folder; the UI shows one toast "Settings copied from …" (pass it through `/api/health` as `migratedFrom`, shown once by `init()` in `app.js`).
+- Tests (`paths_test.go`): installed marker → `%LOCALAPPDATA%\Rubban`; `RUBBAN_DATA_DIR` still wins; portable unchanged; migration copies only when the target is empty and leaves the source in place.
+
+**Installer (Inno Setup).**
+- New `installer/rubban.iss` (committed, ~60 lines): `AppId={{…GUID…}}`, `AppName=Rubban`, `AppVersion` passed as `/DVersion=<VERSION>`, `DefaultDirName={localappdata}\Programs\Rubban`, `PrivilegesRequired=lowest` (no UAC prompt), `DisableProgramGroupPage=yes`, `UninstallDisplayIcon={app}\Rubban.exe`, `SetupIconFile=..\assets\rubban.ico`, `OutputBaseFilename=Rubban-<version>-Setup`, `Compression=lzma2`, `CloseApplications=yes`, `RestartApplications=no`. `[Files]` = the contents of the built `release\Rubban-<version>-Windows-x64` folder (`Source: "..\release\Rubban-{#Version}-Windows-x64\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion`), minus `Install-Rubban.ps1`. `[Icons]` Start menu entry and an optional desktop icon (`Tasks`). `[Run]` launch Rubban after install (`Flags: nowait postinstall skipifsilent`). `[UninstallDelete] Type: filesandordirs; Name: "{app}"` so files the in-app updater added later are removed too. `[Code]`: write `installed.json` in `CurStepChanged(ssPostInstall)`; on uninstall ask "Also delete your settings (%LOCALAPPDATA%\Rubban)?" defaulting to No.
+- `cmd/buildtool`: new command `installer` (Windows only) that runs `ISCC.exe` (`C:\Program Files (x86)\Inno Setup 6\ISCC.exe`, or `ISCC` on PATH) with `/DVersion=<VERSION>` and copies `Rubban-<version>-Setup.exe` into the release dir; fails with a clear message when ISCC is missing. `write-manifest` (`manifest.go`) learns the asset `Rubban-<version>-Setup.exe` → key `win32-x64-setup` in `latest.json` and in `SHA256SUMS.txt`.
+- `.github/workflows/release.yml` windows job: after the smoke test, `go run ./cmd/buildtool installer` (Inno Setup 6 is preinstalled on `windows-latest`), upload `release/*.exe` with the zip; the publish job's `files: release/*` already picks it up.
+- Tests (`buildtool_test.go`): manifest includes the setup asset when present and still works without it.
+
+**Updater.**
+- `internal/updater`: on Windows, when `app.Installed(exe)` is true, `Download` picks the `win32-x64-setup` asset (same SHA-256 verification; fall back to the zip asset when the manifest has no setup entry, i.e. releases older than this feature) and `Install` runs it detached after Rubban exits: `Rubban-<v>-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG=<data>\updates\setup.log`, then starts `{app}\Rubban.exe` — put this in a new branch of `scripts/apply-update.ps1` (`-Setup <exe>` instead of `-Zip`) so the wait-for-exit, result file and fallback-restart logic are shared. Portable builds keep the zip path.
+- Tests (`updater_test.go`): asset selection by installed flag and manifest contents; the apply script is invoked with `-Setup` for installed builds.
+
+**Docs.**
+- README §2.2 becomes: download `Rubban-<version>-Setup.exe`, run it (SmartScreen note stays until item 8 is done), settings live in `%LOCALAPPDATA%\Rubban`; §2.3 "Update: Settings › Updates, or run the new Setup.exe; Remove: Settings › Apps › Rubban". A "Portable" paragraph keeps the zip instructions. `Install-Rubban.ps1` is no longer copied into the zip (`cmd/buildtool/package.go` `packageWindows`) — delete the script unless you decide to keep it for the portable case. §7 (data locations) updated. CHANGELOG bullet.
+
+**Acceptance.** Run `Rubban-0.13.0-Setup.exe` on a machine with the old `Downloads\…\Rubban-Data`: no UAC prompt, Start menu entry, Rubban opens with the old cluster labels and imports, Settings › Apps shows Rubban 0.13.0. Publish 0.13.1 and let the in-app updater install it: Apps shows 0.13.1, settings intact. Uninstall removes the program, keeps `%LOCALAPPDATA%\Rubban` unless asked.
 
 ---
 
