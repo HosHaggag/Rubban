@@ -18,11 +18,28 @@ const workloadKinds = new Set(['Deployment', 'StatefulSet', 'DaemonSet', 'Replic
 // ---- Action buttons for the drawer (mirrors the row menu) -------------------------------------
 export function detailActions(selected) {
   const items = rowMenu(selected.resource, selected.item).filter(item => item !== '-' && !item.heading);
+  const comparable = selected.resource !== 'secrets' && selected.item.kind !== 'Secret';
   return el('div', { class: 'detail-actions' }, items.map(item => {
     const node = button([el('span', { class: 'btn-icon', text: item.icon || '' }), item.label], () => item.action(), `compact${item.danger ? ' danger' : ''}`);
     node.disabled = Boolean(item.disabled);
     return node;
-  }));
+  }), comparable ? button([el('span', { class: 'btn-icon', text: '⇆' }), 'Compare…'], () => compareDialog(selected), 'compact') : null);
+}
+
+// Compare this resource with the same (or another) one in another cluster or namespace. Secrets are not offered.
+function compareDialog(selected) {
+  const names = [...new Set([...state.tabs.map(tab => tab.context).filter(Boolean), ...state.contexts.map(context => context.name)])];
+  const other = names.find(name => name !== selected.context) || selected.context;
+  const form = makeForm([
+    { name: 'context', label: 'Cluster', options: names.map(name => ({ value: name, label: hooks.labelFor?.(name) || name })), value: other },
+    { name: 'namespace', label: 'Namespace', value: selected.namespace || '', placeholder: selected.namespace ? '' : 'Cluster scoped', help: selected.namespace ? 'Defaults to the same namespace.' : '' },
+    { name: 'name', label: 'Name', value: selected.name, required: true },
+  ], 'Compare', values => {
+    document.getElementById('action-dialog').close();
+    hooks.openCompare({ context: selected.context, namespace: selected.namespace || '', resource: selected.resource, name: selected.name }, { context: values.context, namespace: values.namespace.trim(), resource: selected.resource, name: values.name.trim() });
+    return 'Opened in a new tab.';
+  });
+  modal('Compare', `${selected.name} · ${hooks.labelFor?.(selected.context) || selected.context} with…`, form);
 }
 
 // ---- Pods ---------------------------------------------------------------------------------------

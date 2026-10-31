@@ -19,6 +19,7 @@ import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErr
 import { rabbitmqPage } from './rabbitmq.js';
 import * as credentials from './credentials.js';
 import { reviewBar } from './review.js';
+import { alignRows, countDiffering, foldUnchanged, changedKeys, toUnified, renderSideBySide } from './diff.js';
 import { createProblemStore } from './problems.js';
 import { searchContexts, groupByKind, resultDetail, searchable } from './search.js';
 import { permissionText, scopeText, groupByFeature, asText, summary } from './access.js';
@@ -34,7 +35,7 @@ const newTabId = () => `tab-${++tabSeq}-${Date.now().toString(36)}`;
 const homeTab = (context, namespace = '*') => ({ id: newTabId(), context, namespace, section: 'overview', title: 'Overview', trail: [] });
 const TABS_STORE = 'rubban.tabs';
 function saveTabs() {
-  writeStore(TABS_STORE, { active: state.tabs.findIndex(tab => tab.id === state.active), tabs: state.tabs.map(({ context, namespace, section, resource, title, trail }) => ({ context, namespace, section, resource, title, trail })) });
+  writeStore(TABS_STORE, { active: state.tabs.findIndex(tab => tab.id === state.active), tabs: state.tabs.map(({ context, namespace, section, resource, title, trail, compare }) => ({ context, namespace, section, resource, title, trail, compare })) });
 }
 // What a cluster already told us, kept while another tab is active so coming back is instant.
 const clusterCache = new Map();
@@ -408,6 +409,50 @@ async function signIn(context) {
     else $('#status-message').textContent = 'Sign-in failed; try again';
   } });
 }
+// ---- Compare across clusters --------------------------------------------------------------------
+// A view tab holding two sides of one resource: cleaned YAML, side by side, differences marked.
+function openCompare(left, right) {
+  const title = `Compare · ${left.name}${right.name === left.name ? '' : ` ↔ ${right.name}`}`;
+  const tab = { id: newTabId(), context: left.context, namespace: state.namespace, section: 'compare', title, icon: 'cluster', trail: ['Compare'], compare: { left, right } };
+  state.tabs.push(tab); state.active = tab.id;
+  state.selected = null; $('#drawer').classList.add('hidden');
+  navigation(); renderTabs(); render(); saveTabs();
+}
+hooks.openCompare = openCompare;
+function comparePage(tab) {
+  if (!tab.compare) return empty('Nothing to compare', 'Open a resource and choose Compare… in its details.');
+  const signal = state.pageAbort.signal;
+  const compare = tab.compare;
+  const view = { hide: false, includeStatus: false };
+  const head = side => { const meta = infoFor(side.context); return el('span', { class: 'compare-head', title: side.context }, el('span', { class: 'tab-cluster', style: `color:${meta.color}` }, clusterIcon(meta.icon)), el('strong', { text: meta.label }), el('span', { class: 'muted', text: `${side.namespace ? `${side.namespace} · ` : ''}${side.name}` })); };
+  const summary = el('p', { class: 'muted compare-summary', text: 'Reading both sides…' });
+  const body = el('div', { class: 'compare-body' });
+  let rows = []; let shown = [];
+  const hideBox = el('input', { type: 'checkbox', checked: view.hide }); const statusBox = el('input', { type: 'checkbox', checked: view.includeStatus });
+  const root = page(`Compare · ${compare.left.name}`, 'The YAML of one resource on two sides, without what always differs (uid, resourceVersion, managedFields, status).', actions(
+    el('label', { class: 'inline-label' }, hideBox, ' Hide unchanged'), el('label', { class: 'inline-label' }, statusBox, ' Include status'),
+    button('⇄ Swap sides', () => { [compare.left, compare.right] = [compare.right, compare.left]; saveTabs(); load(); }, 'compact'),
+    button('Copy diff', task(async () => { await navigator.clipboard.writeText(toUnified(shown, `${compare.left.context}/${compare.left.namespace}/${compare.left.name}`, `${compare.right.context}/${compare.right.namespace}/${compare.right.name}`)); toast('Copied.'); }), 'compact')));
+  root.append(summary, body);
+  function draw(answer) {
+    rows = alignRows(answer.left, answer.right);
+    shown = view.hide ? foldUnchanged(rows) : rows;
+    const differing = countDiffering(rows);
+    summary.textContent = answer.leftError || answer.rightError ? 'One side could not be read.' : differing ? `${differing} line${differing === 1 ? '' : 's'} differ · ${changedKeys(rows).join(', ')}` : 'The two sides match.';
+    body.replaceChildren(
+      ...[answer.leftError && `${labelFor(compare.left.context)}: ${answer.leftError}`, answer.rightError && `${labelFor(compare.right.context)}: ${answer.rightError}`].filter(Boolean).map(text => info(text, 'error')),
+      renderSideBySide(shown, { leftHead: head(compare.left), rightHead: head(compare.right) }));
+  }
+  let last = null;
+  async function load() {
+    summary.textContent = 'Reading both sides…';
+    try { last = await post('/api/compare', { left: compare.left, right: compare.right, includeStatus: view.includeStatus }, { context: compare.left.context, signal }); draw(last); } catch (error) { if (error.name !== 'AbortError') { summary.textContent = ''; body.replaceChildren(displayError(error, 'Unable to compare')); } }
+  }
+  hideBox.addEventListener('change', () => { view.hide = hideBox.checked; if (last) draw(last); });
+  statusBox.addEventListener('change', () => { view.includeStatus = statusBox.checked; load(); });
+  load();
+  return root;
+}
 // ---- Access checks (Settings › Access) -------------------------------------------------------
 // Opens the access panel of a cluster (the current one by default).
 async function showAccess(context = state.context) {
@@ -673,6 +718,7 @@ async function render() {
       case 'settings': node = await settingsPage(); break;
       case 'clusters': node = await clustersPage(); break;
       case 'problems': node = problemsPage(); break;
+      case 'compare': node = comparePage(tab); break;
       case 'ai': node = aiPage(); break;
       default: node = empty('View not available', 'Select a view from the sidebar.');
     }
@@ -1565,7 +1611,7 @@ function takeTour(reason = 'manual') {
 function restoreTabs() {
   const saved = readStore(TABS_STORE, null);
   const tabs = Array.isArray(saved?.tabs) ? saved.tabs.filter(tab => tab && typeof tab.section === 'string' && (!tab.context || state.contexts.some(context => context.name === tab.context)))
-    .map(tab => ({ id: newTabId(), context: tab.context || '', namespace: typeof tab.namespace === 'string' ? tab.namespace : '*', section: tab.section, resource: tab.resource, title: String(tab.title || tab.section), trail: Array.isArray(tab.trail) ? tab.trail : [] })) : [];
+    .map(tab => ({ id: newTabId(), context: tab.context || '', namespace: typeof tab.namespace === 'string' ? tab.namespace : '*', section: tab.section, resource: tab.resource, title: String(tab.title || tab.section), trail: Array.isArray(tab.trail) ? tab.trail : [], compare: tab.compare?.left && tab.compare?.right ? tab.compare : undefined })) : [];
   if (!tabs.length) { render(); return; }
   state.tabs = tabs;
   const active = tabs[Math.min(Math.max(Number(saved.active) || 0, 0), tabs.length - 1)];

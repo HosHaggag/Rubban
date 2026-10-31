@@ -787,3 +787,16 @@ input.narrow{width:70px;padding:4px 8px}
 .log-legend{display:inline-flex;flex-wrap:wrap;gap:4px}
 .log-chip{border:1px solid currentColor;border-radius:9px;padding:0 8px;font:10.5px var(--mono);background:transparent}
 .log-chip.off{opacity:.4;text-decoration:line-through}
+.compare-head{display:inline-flex;align-items:center;gap:7px}
+.compare-summary{margin:8px 0 12px}
+.diff-sbs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border:1px solid var(--line);border-radius:var(--radius);overflow:auto;font:11.5px/1.55 var(--mono)}
+.diff-head{padding:7px 10px;background:var(--panel-2);border-bottom:1px solid var(--line);font:600 12px var(--font);position:sticky;top:0}
+.diff-head+.diff-head{border-left:1px solid var(--line)}
+.diff-cell{display:flex;gap:8px;min-width:0;padding:0 8px}
+.diff-cell.diff-right{border-left:1px solid var(--line-soft)}
+.diff-no{flex:none;width:34px;text-align:right;color:var(--dim);user-select:none}
+.diff-text{white-space:pre-wrap;word-break:break-all;min-width:0}
+.diff-cell.diff-del{background:var(--diff-del-bg)}
+.diff-cell.diff-add{background:var(--diff-add-bg)}
+.diff-cell.diff-gap{background:var(--well)}
+.diff-skip{grid-column:1/-1;padding:3px 12px;color:var(--muted);background:var(--panel-2);font:11px var(--font)}
