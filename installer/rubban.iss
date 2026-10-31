@@ -5,6 +5,10 @@
 #ifndef Version
   #error Pass /DVersion=<VERSION>
 #endif
+; Release is the folder holding Rubban-<version>-Windows-x64 (the buildtool passes it; defaults to ..\release).
+#ifndef Release
+  #define Release "..\release"
+#endif
 
 [Setup]
 AppId={{B5C3E6F2-6D0A-4F59-9B44-2D7A1F8E4C10}
@@ -18,7 +22,7 @@ DisableDirPage=yes
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\Rubban.exe
 SetupIconFile=..\assets\rubban.ico
-OutputDir=..\release
+OutputDir={#Release}
 OutputBaseFilename=Rubban-{#Version}-Setup
 Compression=lzma2
 SolidCompression=yes
@@ -30,7 +34,7 @@ RestartApplications=no
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "..\release\Rubban-{#Version}-Windows-x64\*"; DestDir: "{app}"; Excludes: "Install-Rubban.ps1"; Flags: recursesubdirs ignoreversion
+Source: "{#Release}\Rubban-{#Version}-Windows-x64\*"; DestDir: "{app}"; Excludes: "Install-Rubban.ps1"; Flags: recursesubdirs ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Rubban"; Filename: "{app}\Rubban.exe"
@@ -54,6 +58,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   MigratedFrom: String;
+  Lines: TArrayOfString;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -61,9 +66,12 @@ begin
     MigratedFrom := '';
     if DirExists(ExpandConstant('{src}\Rubban-Data')) then
       MigratedFrom := ExpandConstant('{src}\Rubban-Data');
-    // UTF-8, so a non-ASCII folder name survives; Rubban skips the byte order mark.
-    SaveStringsToUTF8File(ExpandConstant('{app}\installed.json'),
-      ['{"installer":"inno","version":"{#Version}","migratedFrom":"' + JsonEscape(MigratedFrom) + '"}'], False);
+    // Built in a variable: Pascal Script has no array literals, and a line that starts with "["
+    // would be read as a section tag. UTF-8, so a non-ASCII folder name survives; Rubban skips
+    // the byte order mark.
+    SetArrayLength(Lines, 1);
+    Lines[0] := '{"installer":"inno","version":"{#Version}","migratedFrom":"' + JsonEscape(MigratedFrom) + '"}';
+    SaveStringsToUTF8File(ExpandConstant('{app}\installed.json'), Lines, False);
   end;
 end;
 

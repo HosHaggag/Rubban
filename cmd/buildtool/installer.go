@@ -56,7 +56,8 @@ func cmdInstaller() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(iscc, "/Qp", "/DVersion="+version, filepath.Join(root, "installer", "rubban.iss"))
+	// The release folder is passed in, so RUBBAN_RELEASE_DIR applies to the installer too.
+	cmd := exec.Command(iscc, "/Qp", "/DVersion="+version, "/DRelease="+out, filepath.Join(root, "installer", "rubban.iss"))
 	cmd.Dir = root
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
