@@ -83,6 +83,8 @@ type Backend struct {
 	auth       authBook
 	accessMemo accessCache
 	search     searchIndex
+	childSpawn childSpawner  // replaces process spawning for log readers (tests)
+	logPoll    time.Duration // pod list refresh of selector logs; 0 = default (tests)
 
 	port     atomic.Int64
 	closed   atomic.Bool

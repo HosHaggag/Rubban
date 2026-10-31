@@ -109,6 +109,11 @@ func (b *Backend) serveLogs(w http.ResponseWriter, r *http.Request) {
 			query[k] = v[len(v)-1]
 		}
 	}
+	// A selector follows every pod of the workload, new ones included.
+	if query["selector"] != "" {
+		b.serveMultiLogs(conn, ctx, cancel, query)
+		return
+	}
 	args, err := logArgs(query)
 	if err != nil {
 		fail(websocket.StatusPolicyViolation, "Invalid log request", err)

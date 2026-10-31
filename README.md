@@ -196,6 +196,8 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 | Filter the sidebar | / | / |
 | Close the details panel | Esc | Esc |
 
+Logs opened for a workload follow all of its pods: each pod has its own colour and a chip in the toolbar to hide it, **Include** and **Exclude** accept text or `/regex/`, and **Pause** holds the view while new lines are still collected (up to about 4 MB are kept).
+
 ---
 
 ## 5. Build from source (WSL, Linux, macOS or Windows)
@@ -287,7 +289,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Live CPU and memory | `metrics.k8s.io` `pods` and `nodes`: `list` |
 | Usage for nodes metrics-server misses | `nodes/proxy`: `get` (kubelet summary through the API server) |
 | Usage history and Metrics tabs | `services/proxy`: `get` on the Prometheus service |
-| Logs / exec / attach | `pods/log`: `get`; `pods/exec` and `pods/attach`: `create` |
+| Logs / exec / attach | `pods/log`: `get`; `pods/exec` and `pods/attach`: `create` (logs of a whole workload also `list` pods by its label selector) |
 | Node shell | create pods in `kube-system` (privileged debug pod) |
 | Port forwarding and RabbitMQ console | `pods/portforward`: `create` (forwards you create are restarted and restored by Rubban with the same permission) |
 | Reveal a Secret, RabbitMQ initial login | `secrets`: `get` in that namespace |

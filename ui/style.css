@@ -16,6 +16,7 @@
   --accent:#456e89; --accent-soft:#89b4cf18; --accent-line:#89b4cf80; --accent-text:#93bbd2; --on-accent:#f0f2ed; --accent-hover:#4d7894;
   --good:#92bc98; --warn:#d8b57b; --bad:#bf7774; --info:#93bbd2; --magenta:#bd99bd; --teal:#87b7ad;
   --bad-text:#e5a09b; --warn-text:#dfbd87; --info-text:#a5c5d8;
+  --log-pod-0:#7fb8de; --log-pod-1:#92bc98; --log-pod-2:#d8b57b; --log-pod-3:#c9a2c9; --log-pod-4:#87b7ad; --log-pod-5:#e5a09b; --log-pod-6:#a9b6ec; --log-pod-7:#cfa883;
   --input:#181a1c; --button:#282a2d; --hover:#37383e; --selected:#282a2d; --nav-hover:#232527; --track:#37383e; --badge:#414348; --chip:#2d2f31;
   --radius:4px; --row:32px; --font:'Inter','Segoe UI',system-ui,sans-serif; --mono:'JetBrains Mono','Cascadia Code',Consolas,monospace; --arabic:'Noto Kufi Arabic','Segoe UI',Tahoma,sans-serif;
   --shadow-drawer:#0008; --shadow-dialog:#000c; --scrim:#000000a0; --tour-dim:#000000b3; --highlight:#6d95ad66;
@@ -28,6 +29,7 @@
   --accent:#2f6f9a; --accent-soft:#2f6f9a14; --accent-line:#2f6f9a80; --accent-text:#245c82; --on-accent:#ffffff; --accent-hover:#2a6189;
   --good:#2f8f4e; --warn:#a9711a; --bad:#b4403a; --info:#245c82; --magenta:#8a4d8a; --teal:#2a7c70;
   --bad-text:#9d2f2a; --warn-text:#8c5a0e; --info-text:#1f4f70;
+  --log-pod-0:#245c82; --log-pod-1:#2f7a46; --log-pod-2:#8c5a0e; --log-pod-3:#8a4d8a; --log-pod-4:#2a7c70; --log-pod-5:#9d2f2a; --log-pod-6:#4a56a6; --log-pod-7:#7a5230;
   --input:#ffffff; --button:#f4f5f7; --hover:#e9ebef; --selected:#e4ecf3; --nav-hover:#eef0f3; --track:#e4e6ea; --badge:#dfe2e7; --chip:#eceef1;
   --shadow-drawer:#0002; --shadow-dialog:#0004; --scrim:#0006; --tour-dim:#0009; --highlight:#2f6f9a33;
   color-scheme:light;
@@ -40,6 +42,7 @@
   --accent:#2f6f9a; --accent-soft:#2f6f9a14; --accent-line:#2f6f9a80; --accent-text:#245c82; --on-accent:#ffffff; --accent-hover:#2a6189;
   --good:#2f8f4e; --warn:#a9711a; --bad:#b4403a; --info:#245c82; --magenta:#8a4d8a; --teal:#2a7c70;
   --bad-text:#9d2f2a; --warn-text:#8c5a0e; --info-text:#1f4f70;
+  --log-pod-0:#245c82; --log-pod-1:#2f7a46; --log-pod-2:#8c5a0e; --log-pod-3:#8a4d8a; --log-pod-4:#2a7c70; --log-pod-5:#9d2f2a; --log-pod-6:#4a56a6; --log-pod-7:#7a5230;
   --input:#ffffff; --button:#f4f5f7; --hover:#e9ebef; --selected:#e4ecf3; --nav-hover:#eef0f3; --track:#e4e6ea; --badge:#dfe2e7; --chip:#eceef1;
   --shadow-drawer:#0002; --shadow-dialog:#0004; --scrim:#0006; --tour-dim:#0009; --highlight:#2f6f9a33;
   color-scheme:light;
@@ -770,3 +773,17 @@ input.narrow{width:70px;padding:4px 8px}
 .problem-title{display:flex;flex-direction:column;min-width:0}
 .problem-title small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .problem-actions{display:flex;gap:4px}
+
+::highlight(rubban-pod-0){color:var(--log-pod-0)}
+::highlight(rubban-pod-1){color:var(--log-pod-1)}
+::highlight(rubban-pod-2){color:var(--log-pod-2)}
+::highlight(rubban-pod-3){color:var(--log-pod-3)}
+::highlight(rubban-pod-4){color:var(--log-pod-4)}
+::highlight(rubban-pod-5){color:var(--log-pod-5)}
+::highlight(rubban-pod-6){color:var(--log-pod-6)}
+::highlight(rubban-pod-7){color:var(--log-pod-7)}
+.dock-search.narrow{width:110px}
+.dock-search.invalid{border-color:var(--bad)}
+.log-legend{display:inline-flex;flex-wrap:wrap;gap:4px}
+.log-chip{border:1px solid currentColor;border-radius:9px;padding:0 8px;font:10.5px var(--mono);background:transparent}
+.log-chip.off{opacity:.4;text-decoration:line-through}
