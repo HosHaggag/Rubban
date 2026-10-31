@@ -184,7 +184,8 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 
 | Shortcut | Windows | macOS |
 |---|---|---|
-| Command palette | Ctrl+K | ⌘K |
+| Command palette (views and resources in all open clusters) | Ctrl+K | ⌘K |
+| Open a search result in a new tab | Ctrl+Enter | ⌘Enter |
 | Cluster overview | Ctrl+1 | ⌘1 |
 | Switch cluster (current tab) | Ctrl+Shift+K | ⌘⇧K |
 | Open a cluster in a new tab | Ctrl+T | ⌘T |
@@ -280,6 +281,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Feature | Kubernetes permissions |
 |---|---|
 | Browse any view | `list` and `watch` on that resource (`get` for details) |
+| Search (Ctrl+K) | `list` on pods, deployments, statefulsets, daemonsets, jobs, cronjobs, services, ingresses, configmaps, secrets, persistentvolumeclaims, namespaces and nodes, in all namespaces; kinds you cannot list are skipped |
 | Live CPU and memory | `metrics.k8s.io` `pods` and `nodes`: `list` |
 | Usage for nodes metrics-server misses | `nodes/proxy`: `get` (kubelet summary through the API server) |
 | Usage history and Metrics tabs | `services/proxy`: `get` on the Prometheus service |

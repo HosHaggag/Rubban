@@ -82,6 +82,7 @@ type Backend struct {
 	live       *live.Live // nil when the live layer is off
 	auth       authBook
 	accessMemo accessCache
+	search     searchIndex
 
 	port     atomic.Int64
 	closed   atomic.Bool

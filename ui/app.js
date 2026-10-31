@@ -19,6 +19,7 @@ import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErr
 import { rabbitmqPage } from './rabbitmq.js';
 import * as credentials from './credentials.js';
 import { reviewBar } from './review.js';
+import { searchContexts, groupByKind, resultDetail, searchable } from './search.js';
 import { permissionText, scopeText, groupByFeature, asText, summary } from './access.js';
 import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
 
@@ -261,7 +262,7 @@ function cycleTab(step) {
 function newClusterTab(name) {
   const tab = homeTab(name);
   state.tabs.push(tab); state.active = tab.id;
-  selectContext(name, { fromTab: true });
+  return selectContext(name, { fromTab: true });
 }
 function renderTabs() {
   const clustersOpen = new Set(state.tabs.map(tab => tab.context)).size > 1;
@@ -1385,12 +1386,55 @@ async function toggleFavorite() {
   state.preferences = await api('/api/preferences', { method: 'PUT', body: { ...state.preferences, favoriteContexts: pinned ? favorites.filter(name => name !== state.context) : [...favorites, state.context] } });
   renderFavorites(); toast(pinned ? 'Context removed from hotbar.' : 'Context pinned to hotbar.');
 }
+// Resources by name in every cluster that has a tab open. The server ranks; this groups the answers by
+// cluster and kind, one request per cluster, started 250 ms after the last keystroke.
+const searchHolder = el('div', { class: 'command-resources' });
+let searchTimer = null; let searchAbort = null;
+async function openSearchResult(context, hit, newTab) {
+  $('#command-dialog').close();
+  if (newTab) await newClusterTab(context);
+  else if (context !== state.context) await selectContext(context, { namespace: '*' });
+  showResource({ kind: hit.kind, metadata: { name: hit.name, namespace: hit.namespace || '' } }, hit.resource);
+}
+function scheduleResourceSearch(query) {
+  clearTimeout(searchTimer); searchAbort?.abort(); searchAbort = null;
+  if (!searchable(query)) { searchHolder.replaceChildren(); return; }
+  searchTimer = setTimeout(() => runResourceSearch(query.trim()), 250);
+}
+function runResourceSearch(query) {
+  const abort = new AbortController(); searchAbort = abort;
+  const sections = searchContexts(state.tabs).map(context => {
+    const meta = infoFor(context);
+    const mark = el('span', { class: 'tab-cluster', style: `color:${meta.color}` }, clusterIcon(meta.icon));
+    const body = el('div', {}, el('div', { class: 'command-note', text: 'Searching…' }));
+    return { context, body, node: el('div', { class: 'command-cluster' }, el('div', { class: 'command-group' }, mark, el('span', { text: meta.label })), body) };
+  });
+  searchHolder.replaceChildren(...sections.map(section => section.node));
+  for (const section of sections) {
+    get('/api/search', { context: section.context, q: query, limit: 20 }, { signal: abort.signal }).then(answer => {
+      if (abort.signal.aborted) return;
+      const rows = [];
+      for (const group of groupByKind(answer.results)) {
+        rows.push(el('div', { class: 'command-kind', text: group.kind }));
+        for (const hit of group.items) rows.push(button([el('span', { text: hit.name }), el('small', { text: resultDetail(hit) })], event => openSearchResult(section.context, hit, event.ctrlKey || event.metaKey), 'command-option'));
+      }
+      if (!rows.length) rows.push(el('div', { class: 'command-note', text: 'No matches' }));
+      if (answer.truncated) rows.push(el('div', { class: 'command-note', text: 'More matches than shown; type more to narrow them down.' }));
+      section.body.replaceChildren(...rows);
+    }).catch(error => {
+      if (abort.signal.aborted || error.name === 'AbortError') return;
+      section.body.replaceChildren(el('div', { class: 'command-note', text: error.code === 'credentials' ? 'Credentials expired.' : `Could not search: ${error.message}` }), error.code === 'credentials' ? button('Sign in again', () => { $('#command-dialog').close(); signIn(section.context).catch(err => toast(err.message, true)); }, 'compact') : null);
+    });
+  }
+}
 function commandResults(query) {
   const needle = query.toLowerCase();
   const choices = allNav().filter(item => `${item.title} ${item.tabTitle || ''} ${item.resource || ''} ${item.trail.map(node => node.title).join(' ')}`.toLowerCase().includes(needle));
   $('#command-results').replaceChildren(...choices.slice(0, 80).map(item => button([icon(item.icon || item.trail[0]?.icon || 'overview', 'command-svg'), el('span', { text: item.title }), el('small', { text: item.trail.map(node => node.title).join(' › ') || 'Workspace' })], () => { $('#command-dialog').close(); openView(item.section, item.resource, item.tabTitle || item.title); }, 'command-option')));
   if ('take the tour onboarding help'.includes(needle) && needle) $('#command-results').prepend(button([icon('overview', 'command-svg'), el('span', { text: 'Take the tour' }), el('small', { text: 'Help' })], () => { $('#command-dialog').close(); takeTour(); }, 'command-option'));
-  if (!choices.length && !$('#command-results').children.length) $('#command-results').append(el('p', { class: 'list-note', style: 'padding:12px', text: 'No matching views.' }));
+  if (!choices.length && !$('#command-results').children.length && !searchable(query)) $('#command-results').append(el('p', { class: 'list-note', style: 'padding:12px', text: 'No matching views.' }));
+  $('#command-results').append(searchHolder);
+  scheduleResourceSearch(query);
 }
 async function reloadContexts() {
   let response;
@@ -1465,7 +1509,7 @@ document.querySelectorAll('[data-section]').forEach(node => node.addEventListene
 $('#create-manifest').addEventListener('click', () => createManifest());
 $('#command-open').addEventListener('click', commandPalette);
 $('#command-search').addEventListener('input', event => commandResults(event.target.value));
-$('#command-search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('#command-results button')?.click(); } if (event.key === 'ArrowDown') { event.preventDefault(); $('#command-results button')?.focus(); } });
+$('#command-search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('#command-results button')?.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: event.ctrlKey, metaKey: event.metaKey })); } if (event.key === 'ArrowDown') { event.preventDefault(); $('#command-results button')?.focus(); } });
 $('#local-terminal').addEventListener('click', () => openTerminal(localShellTarget()));
 $('#drawer-close').addEventListener('click', closeDrawer);
 $('#drawer-back').addEventListener('click', drawerBack);
