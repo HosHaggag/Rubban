@@ -173,9 +173,10 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
    - Flux, Gateway API and Custom Resources.
    Ctrl-click (⌘-click on macOS) opens a view in a new tab.
 4. **Tabs work like a browser's.** Each tab remembers its cluster, namespace and view, so two clusters can be open side by side. **+** at the end of the tab bar (or Ctrl+T) opens another cluster in a new tab; the selector at the top left switches the *current* tab's cluster. Last session's tabs come back on the next launch.
-5. **Expired credentials show up where you look.** A cluster whose credentials expired gets an amber ring on its tab, in the selector and on the hotbar, and a banner with **Sign in again**. It opens the terminal dock running the one command that fixes it (`gcloud auth login`, `az login` or `aws sso login --profile …`, chosen from the cluster's kubeconfig); when the login finishes, the views reconnect.
-6. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
-7. **Settings** is the gear at the bottom of the sidebar. It holds:
+5. **Create and edit with a review.** In **Create** and in a resource's **YAML** tab, press **Review** to see exactly what would change (diff, objects, warnings, and the cluster's own validation or admission errors) before **Apply** unlocks. Editing the text after a review locks it again.
+6. **Expired credentials show up where you look.** A cluster whose credentials expired gets an amber ring on its tab, in the selector and on the hotbar, and a banner with **Sign in again**. It opens the terminal dock running the one command that fixes it (`gcloud auth login`, `az login` or `aws sso login --profile …`, chosen from the cluster's kubeconfig); when the login finishes, the views reconnect.
+7. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
+8. **Settings** is the gear at the bottom of the sidebar. It holds:
    - what your identity may do in the current cluster (**Access**);
    - the Prometheus service used for each cluster (or none);
    - the node shell image;
@@ -288,6 +289,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Reveal a Secret, RabbitMQ initial login | `secrets`: `get` in that namespace |
 | Argo CD › Manage | `applications.argoproj.io`: `get`, `list`, `watch`, `patch`, `delete` in the Argo CD namespace |
 | Edit, scale, restart, delete | `patch`, `update` or `delete` on the resource |
+| Review before apply | `create`/`patch` with dry-run on the resource (the review asks the API server to validate the manifest without storing it) |
 
 **Settings › Access** checks all of these for you: it asks the cluster what your identity may do in the namespace you choose, and **Copy as text** gives you something to send to an administrator.
 

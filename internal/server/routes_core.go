@@ -148,6 +148,8 @@ func (b *Backend) dispatch(q *request) (any, int, error) {
 		return b.routeDiscovery(q)
 	case method == "GET" && (route == "/api/resource" || route == "/api/yaml"):
 		return b.routeResource(q)
+	case method == "POST" && route == "/api/apply/preview":
+		return b.routeApplyPreview(q)
 	case method == "POST" && (route == "/api/diff" || route == "/api/apply"):
 		return b.routeDiffApply(q)
 	case method == "POST" && (route == "/api/delete" || route == "/api/scale" || route == "/api/restart"):
@@ -415,8 +417,17 @@ func (b *Backend) routeDiffApply(q *request) (any, int, error) {
 	verb, allow := "apply", []int{0}
 	if isDiff {
 		verb, allow = "diff", []int{0, 1}
+	} else {
+		// Only the manifest the user reviewed is applied.
+		hash, _ := q.body["previewHash"].(string)
+		if hash == "" {
+			return nil, 0, bad("Review the changes before applying")
+		}
+		if hash != manifestHash(input) {
+			return nil, 0, problem("The manifest changed since the preview", 409)
+		}
 	}
-	args := append(append(append([]string{}, ctxArgs...), nsArgs...), verb, "--filename=-")
+	args := append(append(append([]string{}, ctxArgs...), nsArgs...), verb, fieldManager, "--filename=-")
 	res, err := b.kube(q.ctx, args, RunOptions{Input: input, AllowExit: allow})
 	if err != nil {
 		return nil, 0, err

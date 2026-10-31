@@ -346,10 +346,15 @@ func TestDiffAndApply(t *testing.T) {
 	if diff.Status != 200 || diff.Value["changed"] != true || f.last().Opts.Input != manifest || !reflect.DeepEqual(f.last().Opts.AllowExit, []int{0, 1}) {
 		t.Fatalf("diff %v", diff.Value)
 	}
+	// Apply only takes the manifest that was reviewed.
+	if res := f.post("/api/apply", body); res.Status != 400 {
+		t.Fatalf("apply without a review: %d", res.Status)
+	}
+	body["previewHash"] = manifestHash(manifest)
 	if f.post("/api/apply", body).Status != 200 {
 		t.Fatal("apply")
 	}
-	if !contains(f.last().Args, "--filename=-") {
+	if !reflect.DeepEqual(f.last().Args, []string{"--context=dev", "--namespace=apps", "apply", "--field-manager=rubban", "--filename=-"}) {
 		t.Fatalf("args %v", f.last().Args)
 	}
 	if f.post("/api/apply", map[string]any{"context": "dev", "namespace": "apps", "yaml": "kind: ["}).Status != 400 ||

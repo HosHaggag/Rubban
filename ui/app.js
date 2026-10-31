@@ -1,4 +1,4 @@
-import { $, state, hooks, makeForm, confirmAction, modal, el, button, badge, actions, output, info, loading, toast, task, api, get, post, clusterQuery, targetOf, socketURL, readStore, writeStore, age, statusOf, liveKey, liveStamp, table, page, panel, empty, displayError, dl, link, MOD } from './kit.js';
+import { $, state, hooks, makeForm, modal, el, button, badge, actions, info, loading, toast, task, api, get, post, clusterQuery, targetOf, socketURL, readStore, writeStore, age, statusOf, liveKey, liveStamp, table, page, panel, empty, displayError, dl, link, MOD } from './kit.js';
 import { createUsage } from './usage.js';
 import { applyTheme, storedTheme, THEMES } from './theme.js';
 import { renderCluster, openSwitcher, clustersPage, importPanels, infoFor, labelFor, envFor } from './clusterui.js';
@@ -18,6 +18,7 @@ import { consumption, resetPrometheusProvider } from './detail-common.js';
 import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErrors } from './argocd.js';
 import { rabbitmqPage } from './rabbitmq.js';
 import * as credentials from './credentials.js';
+import { reviewBar } from './review.js';
 import { permissionText, scopeText, groupByFeature, asText, summary } from './access.js';
 import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
 
@@ -1157,10 +1158,8 @@ function createManifest(kind) {
   const picker = el('select', { class: 'compact-select', 'aria-label': 'Template' }, el('option', { value: '', text: 'Start from a template…' }), [...new Set(TEMPLATES.map(t => t.group))].map(group => el('optgroup', { label: group }, TEMPLATES.filter(t => t.group === group).map(t => el('option', { value: t.kind, text: t.kind })))));
   const useTemplate = name => { const chosen = TEMPLATES.find(t => t.kind === name); if (!chosen) return; editor.value = chosen.build(ns); editor.dataset.template = editor.value; };
   picker.addEventListener('change', () => useTemplate(picker.value));
-  const result = output('');
-  modal('Create resource', `Context: ${target.context} · Namespace: ${target.namespace || 'from manifest, or default'}`, el('div', {}, el('div', { class: 'form-actions start' }, picker, el('span', { class: 'muted', text: 'Templates are starting points; review names, images and limits before applying.' })), editor, el('div', { class: 'form-actions' },
-    button('Preview diff', task(async () => { if (!editor.value.trim()) throw new Error('Enter a YAML manifest first.'); const diff = await post('/api/diff', { ...target, yaml: editor.value }); result.textContent = diff.diff || 'No changes detected.'; }), 'compact'),
-    button('Create / apply', task(async () => { if (!editor.value.trim()) throw new Error('Enter a YAML manifest first.'); if (!await confirmAction('Apply this manifest to the selected cluster. Review the diff before continuing.', target.context)) return; const response = await post('/api/apply', { ...target, yaml: editor.value }); result.textContent = response.output; toast('Manifest applied.'); afterMutation(); }), 'primary')), result));
+  const review = reviewBar({ editor, target, confirmText: 'Apply this manifest to the selected cluster. Review the diff before continuing.', confirmName: target.context, onApplied: afterMutation });
+  modal('Create resource', `Context: ${target.context} · Namespace: ${target.namespace || 'from manifest, or default'}`, el('div', {}, el('div', { class: 'form-actions start' }, picker, el('span', { class: 'muted', text: 'Templates are starting points. Review shows exactly what would change before anything is applied.' })), editor, review));
   if (kind) { picker.value = kind; useTemplate(kind); }
 }
 const EDITABLE_DETAILS = new Set(['configmaps', 'secrets', 'rolebindings', 'clusterrolebindings']);
@@ -1262,8 +1261,7 @@ async function yamlDetail(selected, body, revealed = false, current = () => stat
   if (!current()) return;
   selected.yamlRevealed = revealed;
   const editor = el('textarea', { class: 'editor', value: result.yaml, spellcheck: 'false', 'aria-label': 'Resource YAML' });
-  const diffOutput = output('');
-  body.replaceChildren(editor, el('div', { class: 'form-actions' }, button('Preview diff', task(async () => { const diff = await post('/api/diff', { context: selected.context, namespace: selected.namespace, yaml: editor.value }); diffOutput.textContent = diff.diff || 'No changes detected.'; }), 'compact'), button('Apply changes', task(async () => { if (!await confirmAction('Apply the edited YAML to this resource. Review your diff before continuing.', selected.name)) return; const response = await post('/api/apply', { context: selected.context, namespace: selected.namespace, yaml: editor.value }); diffOutput.textContent = response.output; toast('Changes applied.'); afterMutation(); }), 'primary compact')), diffOutput);
+  body.replaceChildren(editor, reviewBar({ editor, target: { context: selected.context, namespace: selected.namespace }, confirmText: 'Apply the edited YAML to this resource. Review your diff before continuing.', confirmName: selected.name, onApplied: afterMutation, applyClass: 'primary compact' }));
 }
 
 async function forwardsPage() {

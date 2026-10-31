@@ -734,3 +734,12 @@ input.narrow{width:70px;padding:4px 8px}
 .access-yes{color:var(--good)}
 .access-no{color:var(--bad-text)}
 .inline-label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.review-result{margin-top:10px}
+.review-objects{margin:8px 0;padding-left:18px;font-size:12px;color:var(--strong)}
+.review-error-text{margin:6px 0 0;white-space:pre-wrap;font:11.5px var(--mono)}
+.diff{margin:8px 0 0;padding:8px 0;max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--input);font:11.5px/1.5 var(--mono)}
+.diff-line{padding:0 10px;white-space:pre-wrap;word-break:break-all}
+.diff-meta{color:var(--muted)}
+.diff-add{background:var(--diff-add-bg);color:var(--diff-add)}
+.diff-del{background:var(--diff-del-bg);color:var(--diff-del)}
+:root{--diff-add:var(--good);--diff-add-bg:color-mix(in srgb,var(--good) 16%,transparent);--diff-del:var(--bad-text);--diff-del-bg:color-mix(in srgb,var(--bad) 16%,transparent)}
