@@ -42,7 +42,9 @@ try {
   if (-not (Test-Path $installer)) { throw 'The update does not contain Install-Rubban.ps1.' }
   Copy-Item $Install $backup -Recurse -Force
   try {
-    & $installer -Source $sourceDir -Destination $Install -NoStart
+    # Updating in place never creates shortcuts: a portable copy must not take over the Start menu
+    # entry of an installed Rubban.
+    & $installer -Source $sourceDir -Destination $Install -NoStart -NoShortcuts
   } catch {
     # Put the previous version back so the user is never left without the app.
     Remove-Item (Join-Path $Install '*') -Recurse -Force -ErrorAction SilentlyContinue
