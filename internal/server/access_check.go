@@ -328,6 +328,12 @@ func (b *Backend) routeAccessCheck(q *request) (any, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	// A partial answer (some checks timed out) is shown but not remembered.
+	for _, c := range answer.Checks {
+		if c.Error != "" {
+			return answer, 200, nil
+		}
+	}
 	b.accessMemo.mu.Lock()
 	if b.accessMemo.m == nil {
 		b.accessMemo.m = map[string]accessMemo{}

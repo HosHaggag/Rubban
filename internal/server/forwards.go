@@ -126,16 +126,17 @@ type portForward struct {
 	log       string
 	done      chan struct{} // closed once the current child has exited (or never started)
 
-	keep      bool
-	gen       int       // counts launches; callbacks of an older child are ignored
-	restarts  int       // times Rubban started kubectl again
-	fails     int       // consecutive failures, reset after a minute of being ready
-	retrying  bool      // a restart is scheduled
-	lastError string    // last line kubectl printed before it failed
-	startedAt time.Time // when the current child was launched
-	readyAt   time.Time // when the current child became ready
-	timer     *time.Timer
-	probe     bool // check that the local port is free before the first launch (restored forwards)
+	keep       bool
+	gen        int       // counts launches; callbacks of an older child are ignored
+	restarts   int       // times Rubban started kubectl again
+	fails      int       // consecutive failures, reset after a minute of being ready
+	retrying   bool      // a restart is scheduled
+	lastError  string    // last line kubectl printed before it failed
+	startedAt  time.Time // when the current child was launched
+	readyAt    time.Time // when the current child became ready
+	timer      *time.Timer
+	probe      bool // check that the local port is free before the first launch (restored forwards)
+	restarting bool // a manual restart is in progress
 }
 
 func (f *portForward) active() bool { return f.status == "starting" || f.status == "ready" }
@@ -342,6 +343,12 @@ func (s *fwdState) launchLocked(f *portForward) {
 	b := s.b
 	f.gen++
 	gen := f.gen
+	if f.child != nil {
+		// Never leave a kubectl behind that holds the local port.
+		old := f.child
+		f.child = nil
+		go old.kill()
+	}
 	f.status, f.err, f.log, f.retrying = "starting", "", "", false
 	f.startedAt, f.readyAt = time.Now(), time.Time{}
 	done := make(chan struct{})
@@ -547,6 +554,13 @@ func (s *fwdState) restartNow(ctx context.Context, id string) (fwdView, error) {
 		s.mu.Unlock()
 		return fwdView{}, problem("Port forward not found", 404)
 	}
+	if f.restarting {
+		// Another restart of this forward is already under way: it answers for both.
+		view := s.viewLocked(f)
+		s.mu.Unlock()
+		return view, nil
+	}
+	f.restarting = true
 	f.gen++ // the old child's callbacks no longer count
 	f.retrying = false
 	if f.timer != nil {
@@ -568,6 +582,7 @@ func (s *fwdState) restartNow(ctx context.Context, id string) (fwdView, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	f.restarting = false
 	if s.closed || s.findLocked(id) != f {
 		return fwdView{}, problem("Port forward not found", 404)
 	}

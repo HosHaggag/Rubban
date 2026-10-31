@@ -423,7 +423,7 @@ func (b *Backend) routeDiffApply(q *request) (any, int, error) {
 		if hash == "" {
 			return nil, 0, bad("Review the changes before applying")
 		}
-		if hash != manifestHash(input) {
+		if hash != manifestHash(q.body["context"].(string), nsOf(q), input) {
 			return nil, 0, problem("The manifest changed since the preview", 409)
 		}
 	}

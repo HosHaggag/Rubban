@@ -619,3 +619,26 @@ func TestClosingTheBackendKeepsTheSavedForwards(t *testing.T) {
 		t.Fatalf("saved %v", saved)
 	}
 }
+
+func TestConcurrentForwardRestartsStartOnlyOneNewChild(t *testing.T) {
+	f, spawner := fwdFixture(t, nil)
+	fwdFast(f)
+	id := f.post("/api/forwards", map[string]any{"context": "dev", "resource": "pods", "name": "p", "localPort": 15440, "remotePort": 80}).Value["id"].(string)
+	spawner.child(0).say("Forwarding from 127.0.0.1:15440 -> 80\n")
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); f.post("/api/forwards/"+id+"/restart", nil) }()
+	}
+	wg.Wait()
+	time.Sleep(50 * time.Millisecond)
+	alive := 0
+	for i := 0; i < spawner.count(); i++ {
+		if !spawner.child(i).wasKilled() {
+			alive++
+		}
+	}
+	if alive != 1 {
+		t.Fatalf("%d kubectl children left running of %d started", alive, spawner.count())
+	}
+}

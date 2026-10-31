@@ -25,6 +25,12 @@ const defaultLogPoll = 10 * time.Second
 // while the pod was still running.
 const restartSince = 5
 
+// A reader whose kubectl ends while its pod still runs (a container restart, a dropped stream) is started
+// again after a growing delay, up to maxReaderRestarts times in a row; output from it starts the count over.
+const maxReaderRestarts = 5
+
+func readerRestartDelay(n int) time.Duration { return min(time.Second<<min(n, 4), 15*time.Second) }
+
 type multiLog struct {
 	context, namespace, selector string
 	container                    string // "" or "*": every container; otherwise that container
@@ -123,6 +129,7 @@ type logReader struct {
 	child          childProc
 	buf            string
 	restarted      bool
+	restarts       int  // consecutive restarts without output
 	stopped        bool // killed on purpose: no restart
 	gen            int
 }
@@ -179,6 +186,9 @@ func (s *multiLogSession) emit(r *logReader, gen int, chunk string, flush bool) 
 		return
 	}
 	r.buf += chunk
+	if chunk != "" {
+		r.restarts = 0
+	}
 	var out strings.Builder
 	prefix := "[" + r.pod + "/" + r.container + "] "
 	for {
@@ -258,12 +268,25 @@ func (s *multiLogSession) readerExited(r *logReader, gen int, code int) {
 		return
 	}
 	pod, running := s.pods[r.pod]
-	again := s.req.follow && !r.stopped && !r.restarted && s.ctx.Err() == nil && running && pod.Phase == "Running"
+	again := s.req.follow && !r.stopped && r.restarts < maxReaderRestarts && s.ctx.Err() == nil && running && pod.Phase == "Running"
+	delay := time.Duration(0)
+	if again {
+		delay = s.b.readerDelay(r.restarts)
+		r.restarts++
+	}
 	s.live-- // a restart is counted again by startReader
 	s.mu.Unlock()
 	s.control(map[string]any{"type": "reader", "pod": r.pod, "container": r.container, "state": "ended", "code": code})
 	if again {
-		s.startReader(r.pod, r.container, true)
+		time.AfterFunc(delay, func() {
+			s.mu.Lock()
+			pod, running := s.pods[r.pod]
+			ok := r.gen == gen && !r.stopped && s.ctx.Err() == nil && running && pod.Phase == "Running"
+			s.mu.Unlock()
+			if ok {
+				s.startReader(r.pod, r.container, true)
+			}
+		})
 		return
 	}
 	s.signalIdle()
@@ -454,4 +477,11 @@ func (b *Backend) serveMultiLogs(conn *websocket.Conn, ctx context.Context, canc
 // noteLogAuth records expired credentials found while listing pods for a log stream.
 func (b *Backend) noteLogAuth(err error, kubeContext string) {
 	b.tagCredentials(liveProblem(err), kubeContext)
+}
+
+func (b *Backend) readerDelay(n int) time.Duration {
+	if b.logRestartDelay != nil {
+		return b.logRestartDelay(n)
+	}
+	return readerRestartDelay(n)
 }

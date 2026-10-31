@@ -29,7 +29,7 @@ try {
   if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) { throw 'Rubban did not close in time.' }
   if ($Setup) {
     $log = Join-Path $work 'setup.log'
-    $run = Start-Process -FilePath $Setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', "/LOG=$log") -Wait -PassThru
+    $run = Start-Process -FilePath $Setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', "/LOG=`"$log`"") -Wait -PassThru
     if ($run.ExitCode -ne 0) { throw "The installer exited with code $($run.ExitCode). See $log." }
     $ok = $true
   } else {

@@ -350,7 +350,7 @@ func TestDiffAndApply(t *testing.T) {
 	if res := f.post("/api/apply", body); res.Status != 400 {
 		t.Fatalf("apply without a review: %d", res.Status)
 	}
-	body["previewHash"] = manifestHash(manifest)
+	body["previewHash"] = manifestHash("dev", "apps", manifest)
 	if f.post("/api/apply", body).Status != 200 {
 		t.Fatal("apply")
 	}

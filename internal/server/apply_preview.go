@@ -15,8 +15,9 @@ import (
 
 const fieldManager = "--field-manager=rubban"
 
-func manifestHash(yaml string) string {
-	sum := sha256.Sum256([]byte(yaml))
+// manifestHash binds the reviewed text to the cluster and namespace it was reviewed against.
+func manifestHash(context, namespace, yaml string) string {
+	sum := sha256.Sum256([]byte(context + "\x00" + namespace + "\x00" + yaml))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -173,6 +174,12 @@ func (b *Backend) routeApplyPreview(q *request) (any, int, error) {
 	}
 	answer["objects"] = previewObjects(doc, diffRes.Stdout)
 	answer["warnings"] = warningLines(diffRes.Stderr, dryRes.Stderr)
-	answer["previewHash"] = manifestHash(input)
+	answer["previewHash"] = manifestHash(q.body["context"].(string), nsOf(q), input)
 	return answer, 200, nil
+}
+
+// nsOf is the validated namespace of a request ("" when none).
+func nsOf(q *request) string {
+	ns, _ := q.body["namespace"].(string)
+	return ns
 }

@@ -13,8 +13,9 @@ AppVersion={#Version}
 AppPublisher=Rubban contributors
 DefaultDirName={localappdata}\Programs\Rubban
 DisableProgramGroupPage=yes
+; The uninstaller removes the install folder, so it must be one Rubban owns: no folder page.
+DisableDirPage=yes
 PrivilegesRequired=lowest
-ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\Rubban.exe
 SetupIconFile=..\assets\rubban.ico
 OutputDir=..\release
@@ -60,8 +61,9 @@ begin
     MigratedFrom := '';
     if DirExists(ExpandConstant('{src}\Rubban-Data')) then
       MigratedFrom := ExpandConstant('{src}\Rubban-Data');
-    SaveStringToFile(ExpandConstant('{app}\installed.json'),
-      '{"installer":"inno","version":"{#Version}","migratedFrom":"' + JsonEscape(MigratedFrom) + '"}', False);
+    // UTF-8, so a non-ASCII folder name survives; Rubban skips the byte order mark.
+    SaveStringsToUTF8File(ExpandConstant('{app}\installed.json'),
+      ['{"installer":"inno","version":"{#Version}","migratedFrom":"' + JsonEscape(MigratedFrom) + '"}'], False);
   end;
 end;
 

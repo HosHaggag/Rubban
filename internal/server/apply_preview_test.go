@@ -73,7 +73,7 @@ func TestApplyPreviewRunsDiffAndServerDryRunAndParsesTheAnswer(t *testing.T) {
 	if !reflect.DeepEqual(res.Value["warnings"], wantWarnings) {
 		t.Fatalf("warnings %v", res.Value["warnings"])
 	}
-	if res.Value["previewHash"] != manifestHash(twoObjects) {
+	if res.Value["previewHash"] != manifestHash("dev", "apps", twoObjects) {
 		t.Fatalf("hash %v", res.Value["previewHash"])
 	}
 }
@@ -142,7 +142,7 @@ func TestApplyRefusesAManifestThatChangedSinceThePreview(t *testing.T) {
 	f := newFixture(t, nil)
 	reviewed := manifest
 	edited := strings.Replace(manifest, "hello", "goodbye", 1)
-	body := map[string]any{"context": "dev", "namespace": "apps", "yaml": edited, "previewHash": manifestHash(reviewed)}
+	body := map[string]any{"context": "dev", "namespace": "apps", "yaml": edited, "previewHash": manifestHash("dev", "apps", reviewed)}
 	if res := f.post("/api/apply", body); res.Status != 409 || res.Value["error"] != "The manifest changed since the preview" {
 		t.Fatalf("%d %v", res.Status, res.Value)
 	}
@@ -171,5 +171,22 @@ func TestCreatedFilesReadsKubectlDiffHeaders(t *testing.T) {
 	objects := previewObjects(map[string]any{"kind": "ClusterRole", "metadata": map[string]any{"name": "reader"}}, "diff -u -N /tmp/L/rbac.authorization.k8s.io.v1.ClusterRole.reader /tmp/M/rbac.authorization.k8s.io.v1.ClusterRole.reader\n@@ -0,0 +1,3 @@\n")
 	if len(objects) != 1 || !objects[0].Created {
 		t.Fatalf("%+v", objects)
+	}
+}
+
+func TestApplyPreviewHashIsBoundToTheClusterAndNamespace(t *testing.T) {
+	f := newFixture(t, nil)
+	hash := manifestHash("dev", "apps", manifest)
+	for name, body := range map[string]map[string]any{
+		"another cluster":   {"context": "prod", "namespace": "apps", "yaml": manifest, "previewHash": hash},
+		"another namespace": {"context": "dev", "namespace": "other", "yaml": manifest, "previewHash": hash},
+		"no namespace":      {"context": "dev", "yaml": manifest, "previewHash": hash},
+	} {
+		if res := f.post("/api/apply", body); res.Status != 409 {
+			t.Errorf("%s: %d", name, res.Status)
+		}
+	}
+	if len(f.calls) != 0 {
+		t.Fatal("a review of one target must not unlock another")
 	}
 }

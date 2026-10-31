@@ -68,23 +68,24 @@ type Connection struct {
 
 // Backend serves the API.
 type Backend struct {
-	opts       Options
-	dataDir    string
-	token      string
-	version    string
-	tools      map[string]ToolInfo
-	toolPath   map[string]string
-	runner     CommandRunner
-	procs      processes
-	logger     *logging.Logger
-	kubecfgs   *kubeconfigStore
-	term       terminalState
-	live       *live.Live // nil when the live layer is off
-	auth       authBook
-	accessMemo accessCache
-	search     searchIndex
-	childSpawn childSpawner  // replaces process spawning for log readers (tests)
-	logPoll    time.Duration // pod list refresh of selector logs; 0 = default (tests)
+	opts            Options
+	dataDir         string
+	token           string
+	version         string
+	tools           map[string]ToolInfo
+	toolPath        map[string]string
+	runner          CommandRunner
+	procs           processes
+	logger          *logging.Logger
+	kubecfgs        *kubeconfigStore
+	term            terminalState
+	live            *live.Live // nil when the live layer is off
+	auth            authBook
+	accessMemo      accessCache
+	search          searchIndex
+	childSpawn      childSpawner              // replaces process spawning for log readers (tests)
+	logRestartDelay func(n int) time.Duration // reader restart delay (tests)
+	logPoll         time.Duration             // pod list refresh of selector logs; 0 = default (tests)
 
 	port     atomic.Int64
 	closed   atomic.Bool

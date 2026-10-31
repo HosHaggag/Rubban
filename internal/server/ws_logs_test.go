@@ -52,6 +52,7 @@ func newLogBackend(t *testing.T, pods ...map[string]any) *logBackend {
 	lb.b = New(Options{DataDir: filepath.Join(t.TempDir(), "data"), KubectlPath: "test-kubectl", Runner: runner})
 	lb.b.childSpawn = lb.spawner.spawn
 	lb.b.logPoll = 25 * time.Millisecond
+	lb.b.logRestartDelay = func(int) time.Duration { return 5 * time.Millisecond }
 	conn, err := lb.b.Start(0)
 	if err != nil {
 		t.Fatal(err)
@@ -231,9 +232,9 @@ func TestMultiLogsPickUpNewPodsAndStopDeletedOnes(t *testing.T) {
 	}
 }
 
-func TestMultiLogsRestartAReaderOnceWhileThePodRuns(t *testing.T) {
+func TestMultiLogsRestartAReaderWhileThePodRunsAndGiveUpAfterFive(t *testing.T) {
 	lb := newLogBackend(t, pod("web-1", "Running", "app"))
-	lb.dial(logQuery())
+	lc := lb.dial(logQuery())
 	fwdWaitFor(t, "reader", func() bool { return lb.spawner.count() == 1 })
 	lb.spawner.child(0).exit(0) // the container restarted: kubectl logs ended
 	fwdWaitFor(t, "restart", func() bool { return lb.spawner.count() == 2 })
@@ -241,10 +242,42 @@ func TestMultiLogsRestartAReaderOnceWhileThePodRuns(t *testing.T) {
 	if !reflect.DeepEqual(again, []string{"--context=dev", "--namespace=apps", "logs", "web-1", "--container=app", "--follow=true", "--since=5s"}) {
 		t.Fatalf("restart args %v", again)
 	}
-	lb.spawner.child(1).exit(0)
-	time.Sleep(120 * time.Millisecond)
-	if lb.spawner.count() != 2 {
-		t.Fatalf("only one restart per reader, got %d readers", lb.spawner.count())
+	// A crash loop: every restart ends at once. Five restarts, then it stops trying.
+	for i := 1; i < 6; i++ {
+		i := i
+		fwdWaitFor(t, "child", func() bool { return lb.spawner.count() > i })
+		lb.spawner.child(i).exit(1)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if lb.spawner.count() != 6 {
+		t.Fatalf("1 start + 5 restarts expected, got %d", lb.spawner.count())
+	}
+	_ = lc
+}
+
+func TestMultiLogsRestartCountStartsOverOnceTheReaderProducesOutput(t *testing.T) {
+	lb := newLogBackend(t, pod("web-1", "Running", "app"))
+	lb.dial(logQuery())
+	fwdWaitFor(t, "reader", func() bool { return lb.spawner.count() == 1 })
+	for i := 0; i < 8; i++ {
+		i := i
+		fwdWaitFor(t, "child", func() bool { return lb.spawner.count() > i })
+		lb.spawner.child(i).say("alive\n")
+		lb.spawner.child(i).exit(0)
+	}
+	fwdWaitFor(t, "still restarting after eight healthy runs", func() bool { return lb.spawner.count() >= 9 })
+}
+
+func TestMultiLogsDoNotRestartAReaderOfAPodThatStoppedRunning(t *testing.T) {
+	lb := newLogBackend(t, pod("web-1", "Running", "app"))
+	lb.b.logRestartDelay = func(int) time.Duration { return 120 * time.Millisecond }
+	lb.dial(logQuery())
+	fwdWaitFor(t, "reader", func() bool { return lb.spawner.count() == 1 })
+	lb.spawner.child(0).exit(0)
+	lb.setPods(pod("web-1", "Failed", "app")) // the pod is gone by the time the delay is over
+	time.Sleep(300 * time.Millisecond)
+	if lb.spawner.count() != 1 {
+		t.Fatalf("readers %d", lb.spawner.count())
 	}
 }
 

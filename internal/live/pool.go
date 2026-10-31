@@ -38,6 +38,7 @@ type poolEntry struct {
 	ready    chan struct{}
 	conn     Proxy
 	err      error
+	dead     bool // invalidated while the proxy was still starting
 }
 
 // Pool keeps one proxy per context with reference-counted leases and an idle sweep.
@@ -158,7 +159,7 @@ func (p *Pool) launch(e *poolEntry) {
 		return
 	}
 	e.conn = conn
-	closed := p.closed
+	closed := p.closed || e.dead
 	p.mu.Unlock()
 	if closed {
 		conn.Stop()
@@ -185,6 +186,9 @@ func (p *Pool) invalidate(e *poolEntry) {
 		delete(p.entries, e.context)
 	}
 	conn := e.conn
+	if conn == nil {
+		e.dead = true // launch() stops the proxy once it has started
+	}
 	p.mu.Unlock()
 	if conn != nil {
 		conn.Stop()

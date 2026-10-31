@@ -32,12 +32,12 @@ var authRules = []struct {
 	plugin string
 }{
 	{regexp.MustCompile(`(?i)Reauthentication (is )?required|RefreshError`), "exec-plugin", "gke-gcloud-auth-plugin"},
-	{regexp.MustCompile(`AADSTS|az login`), "exec-plugin", "kubelogin"},
+	{regexp.MustCompile(`(?i)AADSTS\d{3,}|please run:? ?az login`), "exec-plugin", "kubelogin"},
 	{regexp.MustCompile(`ExpiredToken|SSO session|aws sso login`), "exec-plugin", "aws"},
 	{regexp.MustCompile(`invalid_grant`), "exec-plugin", ""},
-	{regexp.MustCompile(`(?i)\boidc\b`), "exec-plugin", "oidc-login"},
+	{regexp.MustCompile(`(?i)\boidc(-login)?: `), "exec-plugin", "oidc-login"},
 	{execFailedRE, "exec-plugin", ""},
-	{regexp.MustCompile(`getting credentials`), "exec-plugin", ""},
+	{regexp.MustCompile(`getting credentials: `), "exec-plugin", ""},
 	{regexp.MustCompile(`the server has asked for the client to provide credentials`), "unauthorized", ""},
 	{regexp.MustCompile(`(?m)^\s*Unauthorized\s*$|\(Unauthorized\)|You must be logged in to the server`), "unauthorized", ""},
 }

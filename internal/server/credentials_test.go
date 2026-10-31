@@ -38,7 +38,8 @@ func TestClassifyAuthFailure(t *testing.T) {
 			t.Errorf("%q: got %+v ok=%v, want %s/%s", c.message, got, ok, c.kind, c.plugin)
 		}
 	}
-	for _, message := range []string{"", "pods is forbidden: User cannot list resource", "Cluster connection lost: connection refused", "the server could not find the requested resource", "unauthorized: authentication required"} {
+	for _, message := range []string{"", "pods is forbidden: User cannot list resource", "Cluster connection lost: connection refused", "the server could not find the requested resource", "unauthorized: authentication required",
+		`Error from server (NotFound): secrets "oidc-client" not found`, `pods "oidc-proxy-7d9" not found`, `error: unknown field "spec.az login"`, `container "getting credentials" is not valid`} {
 		if got, ok := classifyAuthFailure(message); ok {
 			t.Errorf("%q must not classify, got %+v", message, got)
 		}

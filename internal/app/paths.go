@@ -3,6 +3,7 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net"
@@ -28,7 +29,7 @@ func readInstalled(exe string) (installedInfo, bool) {
 		return installedInfo{}, false
 	}
 	var info installedInfo
-	_ = json.Unmarshal(data, &info) // a damaged marker still means "installed"
+	_ = json.Unmarshal(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")), &info) // a damaged marker still means "installed"
 	return info, true
 }
 
