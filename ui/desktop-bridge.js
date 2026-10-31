@@ -88,12 +88,22 @@
   };
 
   if (smoke) {
-    // After the page settled, report what it shows; the shell writes desktop-smoke.json.
-    setTimeout(function () {
+    var report = function (message, stack) { return call('/api/desktop/renderer-error', { message: String(message), stack: String(stack || '') }).catch(function () {}); };
+    // Report what the page shows once the app has started (app.js marks <html data-ready> when its
+    // startup requests have answered and the first view is drawn), one second later so errors thrown
+    // right after still count; the shell writes desktop-smoke.json. A fixed delay raced a slow first
+    // kubectl start. A page that never gets ready fails the smoke test instead of passing half drawn.
+    var started = Date.now();
+    var snapshot = function (ready) {
       var text = document.body ? document.body.innerText : '';
-      call('/api/desktop/smoke-report', { title: document.title, ready: document.readyState, bodyLength: text.length, body: text.slice(0, 3000) }).catch(function () {});
-    }, 2200);
-    var report = function (message, stack) { call('/api/desktop/renderer-error', { message: String(message), stack: String(stack || '') }).catch(function () {}); };
+      call('/api/desktop/smoke-report', { title: document.title, ready: ready, bodyLength: text.length, body: text.slice(0, 3000) }).catch(function () {});
+    };
+    var waitForApp = function () {
+      if (document.documentElement.getAttribute('data-ready') === 'true') { setTimeout(function () { snapshot('app'); }, 1000); return; }
+      if (Date.now() - started > 20000) { report('Rubban did not finish starting within 20 seconds', '').then(function () { snapshot('app-not-ready'); }); return; }
+      setTimeout(waitForApp, 100);
+    };
+    setTimeout(waitForApp, 100);
     window.addEventListener('error', function (event) { report(event.message, event.error && event.error.stack); });
     window.addEventListener('unhandledrejection', function (event) { report(event.reason && event.reason.message || event.reason, event.reason && event.reason.stack); });
     // The smoke test fails on any console error (CSP violations, failed module loads).

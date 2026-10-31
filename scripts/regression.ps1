@@ -123,7 +123,7 @@ try {
     $script:portableExe = (Get-ChildItem (Join-Path $Work 'portable') -Recurse -Filter Rubban.exe | Select-Object -First 1).FullName
     Assert ($null -ne $portableExe) 'the zip has no Rubban.exe'
     $report = Invoke-Smoke $portableExe @{ RUBBAN_DATA_DIR = (Join-Path $Work 'portable-data') } (Join-Path $out 'portable')
-    Assert ($report.bodyLength -gt 500) "the page is nearly empty ($($report.bodyLength) characters)"
+    Assert ($report.bodyLength -gt 500) "the page is nearly empty ($($report.bodyLength) characters, ready=$($report.ready))"
     Assert (Test-Path (Join-Path $Work 'portable-data\port')) 'RUBBAN_DATA_DIR was not used'
   }
 
