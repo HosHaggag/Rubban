@@ -175,7 +175,11 @@ func New(cfg Config) *Updater {
 		cfg.PID = os.Getpid()
 	}
 	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{}
+		// The default transport (system proxy from the environment, HTTP/2) with a longer TLS
+		// handshake timeout: a slow handshake to GitHub should make a check slow, not failed.
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSHandshakeTimeout = 30 * time.Second
+		cfg.HTTPClient = &http.Client{Transport: transport}
 	}
 	if cfg.Env == nil {
 		cfg.Env = os.Getenv

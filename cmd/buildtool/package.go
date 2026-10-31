@@ -177,6 +177,11 @@ func packageWindows(root, out, version, bin, cliBin string) error {
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		return err
 	}
+	removeSyso, err := writeSyso(filepath.Join(root, "assets", "rubban.ico"), filepath.Join(root, "cmd", "rubban"), version)
+	if err != nil {
+		return err
+	}
+	defer removeSyso()
 	if bin != "" {
 		if err := copyFile(bin, filepath.Join(folder, "Rubban.exe"), 0o755); err != nil {
 			return err

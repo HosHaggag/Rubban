@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/coder/websocket v1.8.15
+	github.com/tc-hib/winres v0.3.1
 	github.com/wailsapp/wails/v3 v3.0.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -16,7 +17,9 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/u-root/u-root v0.16.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 )

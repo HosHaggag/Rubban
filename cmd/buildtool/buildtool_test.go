@@ -204,3 +204,33 @@ func TestBundleToolsRecordsProvenance(t *testing.T) {
 		t.Fatalf("provenance %s", prov)
 	}
 }
+
+func TestWindowsResourcesObject(t *testing.T) {
+	if got := versionQuad("0.13.0-rc.1"); got != [4]uint16{0, 13, 0, 0} {
+		t.Fatalf("versionQuad: %v", got)
+	}
+	root, err := repoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	remove, err := writeSyso(filepath.Join(root, "assets", "rubban.ico"), dir, "0.12.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, sysoName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A COFF object for x86-64 (machine 0x8664) carrying the icon groups, manifest and version block.
+	if len(data) < 4096 || data[0] != 0x64 || data[1] != 0x86 {
+		t.Fatalf("not an amd64 COFF object: %d bytes, machine %x %x", len(data), data[0], data[1])
+	}
+	if !bytes.Contains(data, []byte(".rsrc")) {
+		t.Fatal("object has no .rsrc section")
+	}
+	remove()
+	if _, err := os.Stat(filepath.Join(dir, sysoName)); !os.IsNotExist(err) {
+		t.Fatal("the .syso should be removed after the build")
+	}
+}
