@@ -193,6 +193,7 @@ func (b *Backend) Start(port int) (Connection, error) {
 		MaxHeaderBytes:    64 * 1024,
 	}
 	go func() { _ = b.srv.Serve(ln) }()
+	fwdStateOf(b).restore()
 	return b.connection(), nil
 }
 

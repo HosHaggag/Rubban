@@ -43,6 +43,7 @@ export function forwardDialog(selected, preset = {}) {
   ], 'Start forwarding', async values => {
     const response = await post('/api/forwards', { ...targetOf(selected), localPort: values.localPort ? Number(values.localPort) : 0, remotePort: Number(values.remotePort) });
     toast('Port forwarding started.');
+    hooks.forwardsChanged?.();
     if (values.open) waitAndOpen(response.id, values.scheme);
     return response;
   });

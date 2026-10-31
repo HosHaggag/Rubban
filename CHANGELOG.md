@@ -2,6 +2,7 @@
 
 ## 0.13.0: Next features
 
+- **Port forwards survive.** A forward you create is restarted on the same local port when `kubectl port-forward` loses its connection (after 1, 2, 4 … 30 seconds, up to ten tries; **Restart** skips the wait), and it comes back when Rubban starts again, from `forwards.json` in the data folder. A forward whose port is taken stays listed with the reason. The Port Forwarding page shows each forward's cluster and restart count, and the sidebar entry shows how many are running.
 - **Expired credentials are named, with the fix one click away.** When a cluster's credentials expire (or its `gke-gcloud-auth-plugin`, `kubelogin` or `aws` plugin fails), the tab, the cluster selector and the hotbar get an amber ring and a banner says so. **Sign in again** runs `gcloud auth login`, `az login` or `aws sso login` for that cluster in the terminal dock; when the login finishes the views reconnect by themselves. Settings › Prerequisites lists every cluster's sign-in state.
 ## 0.12.2: Cluster tabs
 

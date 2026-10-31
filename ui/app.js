@@ -18,6 +18,7 @@ import { consumption, resetPrometheusProvider } from './detail-common.js';
 import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErrors } from './argocd.js';
 import { rabbitmqPage } from './rabbitmq.js';
 import * as credentials from './credentials.js';
+import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -77,6 +78,9 @@ function icon(name, className = 'nav-svg') {
   path.setAttribute('d', ICONS[name] || ICONS.overview);
   svg.append(path); return svg;
 }
+// Running port forwards, counted for the sidebar on every page.
+const forwardsPoller = createForwardsPoller({ fetchItems: async () => (await get('/api/forwards')).items || [], onCount: () => navigation() });
+hooks.forwardsChanged = () => forwardsPoller.refresh();
 const leaf = (title, section, resource, extra = {}) => ({ title, section, resource, ...extra });
 const kube = (title, resource, extra) => leaf(title, 'resource', resource, extra);
 const NAV = [
@@ -185,7 +189,8 @@ function navigation() {
         if (!selfMatch) continue;
         const selected = sameView(node, tab);
         const go = event => openView(node.section, node.resource, node.tabTitle || node.title, { newTab: event.ctrlKey || event.metaKey || event.button === 1 });
-        const item = button([level === 0 ? el('span', { class: 'nav-chevron-spacer' }) : null, level === 0 ? icon(node.icon) : null, el('span', { class: 'nav-label', text: node.title })], go, `nav-item nav-level-${level}${selected ? ' selected' : ''}`);
+        const badgeCount = node.section === 'forwards' ? forwardsPoller.count : 0;
+        const item = button([level === 0 ? el('span', { class: 'nav-chevron-spacer' }) : null, level === 0 ? icon(node.icon) : null, el('span', { class: 'nav-label', text: node.title }), badgeCount ? el('span', { class: 'nav-badge', title: `${badgeCount} active port forward${badgeCount === 1 ? '' : 's'}`, text: String(badgeCount) }) : null], go, `nav-item nav-level-${level}${selected ? ' selected' : ''}`);
         item.addEventListener('auxclick', event => { if (event.button === 1) { event.preventDefault(); go(event); } });
         item.title = `Click to open · ${MOD}+click to open in a new tab`;
         out.push(item);
@@ -1226,24 +1231,25 @@ async function forwardsPage() {
   const signal = state.pageAbort.signal;
   const root = page('Port forwarding', 'Local connections to pods and services in your clusters. Forwarded ports listen on 127.0.0.1 only.', actions(button('↻ Refresh', render, 'compact')));
   const stop = forward => task(async () => { await api(`/api/forwards/${encodeURIComponent(forward.id)}`, { method: 'DELETE' }); toast('Port forward stopped.'); load(); });
-  const restart = forward => task(async () => { await api(`/api/forwards/${encodeURIComponent(forward.id)}`, { method: 'DELETE' }).catch(() => {}); await post('/api/forwards', { context: forward.context, namespace: forward.namespace, resource: forward.resource, name: forward.name, localPort: forward.localPort, remotePort: forward.remotePort }); toast('Port forward restarted.'); setTimeout(load, 800); });
+  const restart = forward => task(async () => { await post(`/api/forwards/${encodeURIComponent(forward.id)}/restart`, {}); toast('Port forward restarted.'); load(); });
   const openForward = (forward, scheme = 'http') => openExternalLink(`${scheme}://localhost:${forward.localPort}`);
+  const clusterCell = context => { const meta = infoFor(context); const mark = el('span', { class: 'tab-cluster', style: `color:${meta.color}` }, clusterIcon(meta.icon)); return el('span', { class: 'cluster-cell', title: context }, mark, meta.label); };
+  const statusCell = r => el('span', { class: 'forward-status' }, badge(statusText(r), statusLevel(r)), r.status === 'error' ? button('Restart', restart(r), 'compact quiet') : null);
   const view = table([], [
+    { id: 'status', title: 'Status', locked: true, render: statusCell, sort: r => r.status },
     { id: 'name', title: 'Name', class: 'name', locked: true, render: r => r.name, sort: r => r.name },
     { id: 'kind', title: 'Kind', render: r => (r.resource === 'services' ? 'Service' : r.resource === 'pods' ? 'Pod' : r.resource), sort: r => r.resource },
     { id: 'namespace', title: 'Namespace', render: r => r.namespace, sort: r => r.namespace },
-    { id: 'context', title: 'Cluster', render: r => r.context, sort: r => r.context },
-    { id: 'remote', title: 'Remote port', class: 'num', render: r => String(r.remotePort), sort: r => r.remotePort },
-    { id: 'local', title: 'Local port', class: 'num', render: r => (r.localPort ? String(r.localPort) : 'choosing…'), sort: r => r.localPort },
-    { id: 'link', title: 'Address', render: r => (r.status === 'ready' && r.localPort ? link(`http://localhost:${r.localPort}`, () => openForward(r)) : '—') },
+    { id: 'context', title: 'Cluster', render: r => clusterCell(r.context), sort: r => labelFor(r.context) },
+    { id: 'ports', title: 'Local → Remote', class: 'num', render: r => `${r.localPort ? r.localPort : 'choosing…'} → ${r.remotePort}`, sort: r => r.localPort },
+    { id: 'link', title: 'Open', render: r => (r.status === 'ready' && r.localPort ? link(`http://localhost:${r.localPort}`, () => openForward(r)) : '—') },
     { id: 'age', title: 'Started', render: r => (r.createdAt ? `${age(r.createdAt)} ago` : '—'), sort: r => -(new Date(r.createdAt).getTime() || 0) },
-    { id: 'status', title: 'Status', render: r => badge(r.status === 'ready' ? 'Active' : r.status || 'Starting', r.status === 'ready' ? 'good' : r.status === 'error' ? 'bad' : r.status === 'stopped' ? '' : 'warn'), sort: r => r.status },
     { id: 'error', title: 'Details', class: 'wrap', hidden: true, render: r => r.error || '—' },
-  ], null, { id: 'forwards', key: r => r.id, stamp: r => `${r.status}|${r.localPort}|${r.error || ''}`, searchText: r => `${r.name} ${r.context} ${r.namespace} ${r.localPort} ${r.error || ''}`, empty: 'No port forwards. Open a pod or service and choose Port forward.',
+  ], null, { id: 'forwards', key: r => r.id, stamp: r => `${r.status}|${r.localPort}|${r.restarts}|${r.lastError || ''}|${r.error || ''}`, searchText: r => `${r.name} ${r.context} ${labelFor(r.context)} ${r.namespace} ${r.localPort} ${r.error || ''}`, empty: 'No port forwards. Open a pod or service and choose Port forward.',
     menu: r => [{ icon: '↗', label: 'Open in browser', action: () => openForward(r), disabled: r.status !== 'ready' }, { icon: '↗', label: 'Open with HTTPS', action: () => openForward(r, 'https'), disabled: r.status !== 'ready' }, { icon: '⧉', label: 'Copy address', action: task(async () => { await navigator.clipboard.writeText(`http://localhost:${r.localPort}`); toast('Copied.'); }) }, { icon: '↻', label: 'Restart', action: restart(r) }, '-', { icon: '■', label: 'Stop', danger: true, action: stop(r) }],
     bulk: (items, clear) => button(`Stop ${items.length}`, task(async () => { for (const item of items) await api(`/api/forwards/${encodeURIComponent(item.id)}`, { method: 'DELETE' }).catch(() => {}); clear(); load(); }), 'danger compact') });
-  root.append(view);
-  async function load() { try { const response = await get('/api/forwards', {}, { signal }); view.update(response.items || []); } catch (error) { if (!signal.aborted) toast(error.message, true); } }
+  root.append(view, el('p', { class: 'list-note', text: 'Forwards are restored when Rubban starts, and restarted on the same local port if kubectl loses the connection.' }));
+  async function load() { try { const response = await get('/api/forwards', {}, { signal }); view.update(response.items || []); forwardsPoller.observe(response.items || []); } catch (error) { if (!signal.aborted) toast(error.message, true); } }
   await load();
   if (signal.aborted) return root;
   const timer = setInterval(load, 3000); signal.addEventListener('abort', () => clearInterval(timer), { once: true });
@@ -1398,12 +1404,13 @@ async function init() {
   navigation(); renderTabs(); $('#main').replaceChildren(loading());
   const results = await Promise.allSettled([get('/api/health'), get('/api/contexts'), get('/api/preferences')]);
   if (results[0].status === 'fulfilled') { state.health = results[0].value; $('#app-version').textContent = `Rubban ${state.health.version || 'Desktop'}`; }
-  if (results[1].status === 'fulfilled') { state.contexts = results[1].value.contexts || []; }
+  if (results[1].status === 'fulfilled') { state.contexts = results[1].value.contexts || []; credentials.load(state.contexts); }
   else state.contextsError = results[1].reason.message;
   if (results[2].status === 'fulfilled') { state.preferences = results[2].value; applyTheme(state.preferences.theme || 'system'); }
   renderFavorites();
   for (const result of results) if (result.status === 'rejected') toast(result.reason.message, true);
   restoreTabs();
+  forwardsPoller.refresh();
   setupUpdates({ openSettings: () => openView('settings') });
   if (results[2].status === 'fulfilled' && !state.preferences.tourCompletedVersion) setTimeout(() => takeTour('first-run'), 600);
 }

@@ -724,3 +724,7 @@ input.narrow{width:70px;padding:4px 8px}
 .update-ring{width:18px;height:18px;fill:none;stroke-width:2.5}
 .update-ring .track{stroke:var(--track)}.update-ring .fill{stroke:var(--accent)}
 .inline-check{display:inline-flex;align-items:center;gap:6px;margin-left:auto;color:var(--muted);font-size:11.5px}
+
+.nav-badge{margin-left:auto;min-width:16px;padding:0 5px;border-radius:8px;background:var(--accent-soft);color:var(--accent-text);font-size:10.5px;line-height:16px;text-align:center}
+.cluster-cell{display:inline-flex;align-items:center;gap:6px}
+.forward-status{display:inline-flex;align-items:center;gap:8px}

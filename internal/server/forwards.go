@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -108,20 +111,48 @@ type fwdSpec struct {
 }
 
 // portForward is one kubectl port-forward. Fields are guarded by fwdState.mu.
+//
+// A forward created from the Port Forwarding page or a row menu (keep) is restarted by Rubban when
+// kubectl dies and is restored, with its local port, when Rubban starts. Console forwards (keep
+// false) are restarted lazily by the console proxy instead and never written to disk.
 type portForward struct {
-	id         string
-	spec       fwdSpec
-	localPort  int
-	status     string // starting, ready, error, stopped
-	err        string
-	createdAt  string
-	child      childProc
-	log        string
-	done       chan struct{} // closed once the child has exited (or never started)
-	doneClosed bool
+	id        string
+	spec      fwdSpec
+	localPort int
+	status    string // starting, ready, error, stopped
+	err       string
+	createdAt string
+	child     childProc
+	log       string
+	done      chan struct{} // closed once the current child has exited (or never started)
+
+	keep      bool
+	gen       int       // counts launches; callbacks of an older child are ignored
+	restarts  int       // times Rubban started kubectl again
+	fails     int       // consecutive failures, reset after a minute of being ready
+	retrying  bool      // a restart is scheduled
+	lastError string    // last line kubectl printed before it failed
+	startedAt time.Time // when the current child was launched
+	readyAt   time.Time // when the current child became ready
+	timer     *time.Timer
+	probe     bool // check that the local port is free before the first launch (restored forwards)
 }
 
 func (f *portForward) active() bool { return f.status == "starting" || f.status == "ready" }
+
+// holdsPort reports whether the forward owns its local port: it runs, or waits to be restarted.
+func (f *portForward) holdsPort() bool { return f.active() || f.retrying }
+
+const (
+	fwdMaxFailures = 10
+	fwdStableAfter = 60 * time.Second
+)
+
+// fwdBackoff is the wait before restart number n (1, 2, 4 … 30 seconds).
+func fwdBackoff(failures int) time.Duration {
+	d := time.Second << min(max(failures-1, 0), 5)
+	return min(d, 30*time.Second)
+}
 
 // fwdConsole is one embedded console and the forward behind it.
 type fwdConsole struct {
@@ -145,6 +176,11 @@ type fwdState struct {
 	closed  bool
 	// spawn replaces process spawning (tests); nil uses the real kubectl.
 	spawn childSpawner
+	// backoff and portFree replace the restart delay and the local-port probe (tests).
+	backoff  func(failures int) time.Duration
+	portFree func(port int) bool
+
+	persistMu sync.Mutex // serialises writes of forwards.json; taken before mu
 }
 
 var fwdStates sync.Map // *Backend -> *fwdState
@@ -171,7 +207,10 @@ func (s *fwdState) shutdown() {
 	consoles := s.console
 	s.list, s.console = nil, map[string]*fwdConsole{}
 	for _, f := range forwards {
-		f.status = "stopped"
+		f.status, f.retrying = "stopped", false
+		if f.timer != nil {
+			f.timer.Stop()
+		}
 	}
 	s.mu.Unlock()
 	fwdStates.Delete(s.b)
@@ -205,12 +244,21 @@ type fwdView struct {
 	Error      string `json:"error,omitempty"`
 	CreatedAt  string `json:"createdAt"`
 	EmbedPort  int    `json:"embedPort,omitempty"`
+	Restarts   int    `json:"restarts"`
+	Retrying   bool   `json:"retrying,omitempty"`
+	LastError  string `json:"lastError,omitempty"`
+	Keep       bool   `json:"keep"`
+	StartedAt  string `json:"startedAt,omitempty"`
 }
 
 // viewLocked requires s.mu.
 func (s *fwdState) viewLocked(f *portForward) fwdView {
 	v := fwdView{ID: f.id, Context: f.spec.context, Namespace: f.spec.namespace, Resource: f.spec.resource, Name: f.spec.name,
-		LocalPort: f.localPort, RemotePort: f.spec.remotePort, Status: f.status, Error: f.err, CreatedAt: f.createdAt}
+		LocalPort: f.localPort, RemotePort: f.spec.remotePort, Status: f.status, Error: f.err, CreatedAt: f.createdAt,
+		Restarts: f.restarts, Retrying: f.retrying, LastError: f.lastError, Keep: f.keep}
+	if !f.startedAt.IsZero() {
+		v.StartedAt = f.startedAt.UTC().Format("2006-01-02T15:04:05.000Z")
+	}
 	for _, c := range s.console {
 		if c.forward.id == f.id {
 			v.EmbedPort = c.embed.port
@@ -248,24 +296,7 @@ func (s *fwdState) removeLocked(id string) {
 	}
 }
 
-func (f *portForward) finish() {
-	if !f.doneClosed {
-		f.doneClosed = true
-		close(f.done)
-	}
-}
-
-// start spawns kubectl port-forward. localPort 0 lets kubectl choose a free port; the chosen port is
-// read from its output.
-func (s *fwdState) start(spec fwdSpec, localPort int) (*portForward, error) {
-	b := s.b
-	if b.isClosed() {
-		return nil, problem("Backend is closed", 503)
-	}
-	tool, err := b.requireTool("kubectl")
-	if err != nil {
-		return nil, err
-	}
+func forwardArgs(spec fwdSpec, localPort int) []string {
 	args := []string{"--context=" + spec.context}
 	if spec.namespace != "" {
 		args = append(args, "--namespace="+spec.namespace)
@@ -274,9 +305,21 @@ func (s *fwdState) start(spec fwdSpec, localPort int) (*portForward, error) {
 	if localPort != 0 {
 		target = fmt.Sprint(localPort)
 	}
-	args = append(args, "port-forward", spec.resource+"/"+spec.name, fmt.Sprintf("%s:%d", target, spec.remotePort), "--address=127.0.0.1")
-	f := &portForward{id: fwdNewID(), spec: spec, localPort: localPort, status: "starting", createdAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), done: make(chan struct{})}
+	return append(args, "port-forward", spec.resource+"/"+spec.name, fmt.Sprintf("%s:%d", target, spec.remotePort), "--address=127.0.0.1")
+}
 
+// start spawns kubectl port-forward. localPort 0 lets kubectl choose a free port; the chosen port is
+// read from its output. keep marks a forward the user created: it survives kubectl dying and a restart
+// of Rubban.
+func (s *fwdState) start(spec fwdSpec, localPort int, keep bool) (*portForward, error) {
+	b := s.b
+	if b.isClosed() {
+		return nil, problem("Backend is closed", 503)
+	}
+	if _, err := b.requireTool("kubectl"); err != nil {
+		return nil, err
+	}
+	f := &portForward{id: fwdNewID(), spec: spec, localPort: localPort, createdAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), keep: keep}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -284,51 +327,103 @@ func (s *fwdState) start(spec fwdSpec, localPort int) (*portForward, error) {
 	}
 	if localPort != 0 {
 		for _, other := range s.list {
-			if other.localPort == localPort && other.active() {
+			if other.localPort == localPort && other.holdsPort() {
 				return nil, problem("This local port already has a Rubban forward", 409)
 			}
 		}
 	}
+	s.list = append(s.list, f)
+	s.launchLocked(f)
+	return f, nil
+}
+
+// launchLocked starts kubectl for f (requires s.mu). A failure to start is recorded like a crash.
+func (s *fwdState) launchLocked(f *portForward) {
+	b := s.b
+	f.gen++
+	gen := f.gen
+	f.status, f.err, f.log, f.retrying = "starting", "", "", false
+	f.startedAt, f.readyAt = time.Now(), time.Time{}
+	done := make(chan struct{})
+	f.done = done
+	finish := sync.OnceFunc(func() { close(done) })
+	fail := func(message string) {
+		f.status, f.err, f.lastError = "error", message, lastLine(message)
+		finish()
+		s.failedLocked(f)
+	}
+	tool, err := b.requireTool("kubectl")
+	if err != nil {
+		fail(shortError(err))
+		return
+	}
+	if f.localPort != 0 && (f.restarts > 0 || f.probe) && !s.portIsFree(f.localPort) {
+		fail(fmt.Sprintf("local port %d is in use", f.localPort))
+		return
+	}
 	hooks := childHooks{
-		output: func(chunk string) { s.output(f, chunk) },
-		exited: func(code int) { s.exited(f, code) },
+		output: func(chunk string) { s.output(f, gen, chunk) },
+		exited: func(code int) { defer finish(); s.exited(f, gen, code) },
 	}
 	spawn := s.spawn
 	if spawn == nil {
 		spawn = b.spawnChild
 	}
-	child, err := spawn(tool, args, b.kubeEnv(), hooks)
-	s.list = append(s.list, f)
+	child, err := spawn(tool, forwardArgs(f.spec, f.localPort), b.kubeEnv(), hooks)
 	if err != nil {
-		f.status, f.err = "error", shortError(err)
-		f.finish()
-		return f, nil
+		fail(shortError(err))
+		return
 	}
 	f.child = child
-	return f, nil
 }
 
-func (s *fwdState) output(f *portForward, chunk string) {
+func (s *fwdState) portIsFree(port int) bool {
+	if s.portFree != nil {
+		return s.portFree(port)
+	}
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return false
+	}
+	_ = ln.Close()
+	return true
+}
+
+func lastLine(text string) string {
+	lines := strings.Split(strings.TrimSpace(strings.ToValidUTF8(text, "")), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
+}
+
+func (s *fwdState) output(f *portForward, gen int, chunk string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	if f.gen != gen {
+		s.mu.Unlock()
+		return
+	}
 	log := f.log + chunk
 	if len(log) > 8000 {
 		log = log[len(log)-8000:]
 	}
 	f.log = log
+	learned := false
 	if m := fwdReadyRE.FindStringSubmatch(log); m != nil && f.status == "starting" {
-		f.status = "ready"
+		f.status, f.readyAt = "ready", time.Now()
 		if f.localPort == 0 {
 			fmt.Sscan(m[1], &f.localPort)
+			learned = f.keep
 		}
+	}
+	s.mu.Unlock()
+	if learned {
+		// A restart (and the next launch of Rubban) reuses the port kubectl picked.
+		s.persist()
 	}
 }
 
-func (s *fwdState) exited(f *portForward, code int) {
+func (s *fwdState) exited(f *portForward, gen int, code int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	defer f.finish()
-	if f.status == "stopped" {
+	if f.gen != gen || f.status == "stopped" {
 		return
 	}
 	if code == 0 {
@@ -340,6 +435,40 @@ func (s *fwdState) exited(f *portForward, code int) {
 	if f.err == "" {
 		f.err = fmt.Sprintf("kubectl port-forward exited with code %d", code)
 	}
+	f.lastError = lastLine(f.err)
+	s.failedLocked(f)
+}
+
+// failedLocked schedules the next restart of a kept forward, or gives up after fwdMaxFailures
+// consecutive failures (requires s.mu).
+func (s *fwdState) failedLocked(f *portForward) {
+	if !f.keep || s.closed {
+		return
+	}
+	if !f.readyAt.IsZero() && time.Since(f.readyAt) >= fwdStableAfter {
+		f.fails = 0
+	}
+	f.fails++
+	if f.fails >= fwdMaxFailures {
+		return
+	}
+	backoff := fwdBackoff
+	if s.backoff != nil {
+		backoff = s.backoff
+	}
+	gen := f.gen
+	f.retrying = true
+	f.timer = time.AfterFunc(backoff(f.fails), func() { s.autoRestart(f, gen) })
+}
+
+func (s *fwdState) autoRestart(f *portForward, gen int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || f.gen != gen || !f.retrying || s.findLocked(f.id) != f {
+		return
+	}
+	f.restarts++
+	s.launchLocked(f)
 }
 
 // create handles POST /api/forwards.
@@ -367,10 +496,11 @@ func (s *fwdState) create(body map[string]any) (fwdView, error) {
 		return fwdView{}, err
 	}
 	spec.remotePort = int(remote)
-	f, err := s.start(spec, int(local))
+	f, err := s.start(spec, int(local), true)
 	if err != nil {
 		return fwdView{}, err
 	}
+	s.persist()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.viewLocked(f), nil
@@ -384,23 +514,159 @@ func (s *fwdState) stop(ctx context.Context, id string) error {
 		s.mu.Unlock()
 		return problem("Port forward not found", 404)
 	}
-	f.status = "stopped"
-	child := f.child
+	f.status, f.retrying = "stopped", false
+	f.gen++
+	if f.timer != nil {
+		f.timer.Stop()
+	}
+	child, done := f.child, f.done
 	s.removeLocked(id)
 	s.mu.Unlock()
 	if child != nil {
 		child.kill()
 	}
 	s.closeConsoleOf(id)
+	s.persist()
 	// Answer after kubectl has released the local port, so a restart can reuse it.
 	timer := time.NewTimer(3 * time.Second)
 	defer timer.Stop()
 	select {
-	case <-f.done:
+	case <-done:
 	case <-timer.C:
 	case <-ctx.Done():
 	}
 	return nil
+}
+
+// restartNow handles POST /api/forwards/:id/restart: kubectl is started again at once and the failure
+// count starts over.
+func (s *fwdState) restartNow(ctx context.Context, id string) (fwdView, error) {
+	s.mu.Lock()
+	f := s.findLocked(id)
+	if f == nil {
+		s.mu.Unlock()
+		return fwdView{}, problem("Port forward not found", 404)
+	}
+	f.gen++ // the old child's callbacks no longer count
+	f.retrying = false
+	if f.timer != nil {
+		f.timer.Stop()
+	}
+	child, done := f.child, f.done
+	f.child = nil
+	s.mu.Unlock()
+	if child != nil {
+		child.kill()
+		// Wait until kubectl released the local port.
+		timer := time.NewTimer(3 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-done:
+		case <-timer.C:
+		case <-ctx.Done():
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.findLocked(id) != f {
+		return fwdView{}, problem("Port forward not found", 404)
+	}
+	f.fails = 0
+	f.restarts++
+	s.launchLocked(f)
+	return s.viewLocked(f), nil
+}
+
+// --- persistence ---------------------------------------------------------------------------
+
+type fwdSaved struct {
+	ID         string `json:"id"`
+	Context    string `json:"context"`
+	Namespace  string `json:"namespace"`
+	Resource   string `json:"resource"`
+	Name       string `json:"name"`
+	LocalPort  int    `json:"localPort"`
+	RemotePort int    `json:"remotePort"`
+}
+
+func (s *fwdState) savePath() string { return filepath.Join(s.b.dataDir, "forwards.json") }
+
+// persist writes the user's forwards to forwards.json. Console forwards are not part of it. A write
+// failure is logged, not reported: the forward itself works.
+func (s *fwdState) persist() {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return // closing Rubban must not forget the forwards
+	}
+	saved := make([]fwdSaved, 0, len(s.list))
+	for _, f := range s.list {
+		if f.keep && f.status != "stopped" {
+			saved = append(saved, fwdSaved{f.id, f.spec.context, f.spec.namespace, f.spec.resource, f.spec.name, f.localPort, f.spec.remotePort})
+		}
+	}
+	s.mu.Unlock()
+	data, err := json.MarshalIndent(saved, "", "  ")
+	if err == nil {
+		if err = os.MkdirAll(s.b.dataDir, 0o700); err == nil {
+			err = writeFileAtomic(s.savePath(), data, 0o600, 8)
+		}
+	}
+	if err != nil {
+		s.b.logger.Warn("Could not save port forwards: "+err.Error(), nil)
+	}
+}
+
+// restore starts the forwards saved by the last run, each on its saved local port. A port that is in
+// use leaves the forward listed with an error so the user sees it and can replace it.
+func (s *fwdState) restore() {
+	data, err := os.ReadFile(s.savePath())
+	if err != nil {
+		return
+	}
+	var saved []fwdSaved
+	if json.Unmarshal(data, &saved) != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	for _, item := range saved {
+		spec := fwdSpec{context: item.Context, namespace: item.Namespace, resource: item.Resource, name: item.Name, remotePort: item.RemotePort}
+		if validFwdSaved(item) != nil || s.findLocked(item.ID) != nil {
+			continue
+		}
+		f := &portForward{id: item.ID, spec: spec, localPort: item.LocalPort, createdAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), keep: true, probe: true}
+		s.list = append(s.list, f)
+		s.launchLocked(f)
+		f.probe = false
+	}
+}
+
+// validFwdSaved applies the API's validation to a saved forward: the file is the user's, but it is
+// still input to kubectl.
+func validFwdSaved(item fwdSaved) error {
+	if _, err := validateText(item.Context, "context"); err != nil {
+		return err
+	}
+	if _, err := validateNamespace(item.Namespace, false); err != nil {
+		return err
+	}
+	if _, err := validateResource(item.Resource); err != nil {
+		return err
+	}
+	if _, err := validateName(item.Name, "name"); err != nil {
+		return err
+	}
+	if _, err := integer(item.LocalPort, "local port", 0, 65535, nil); err != nil {
+		return err
+	}
+	_, err := integer(item.RemotePort, "remote port", 1, 65535, nil)
+	return err
 }
 
 func (s *fwdState) closeConsoleOf(forwardID string) {
@@ -437,7 +703,7 @@ func (s *fwdState) ready(ctx context.Context, spec fwdSpec) (*portForward, error
 	s.mu.Unlock()
 	if f == nil {
 		var err error
-		if f, err = s.start(spec, 0); err != nil {
+		if f, err = s.start(spec, 0, false); err != nil {
 			return nil, err
 		}
 	}
@@ -450,14 +716,14 @@ func (s *fwdState) ready(ctx context.Context, spec fwdSpec) (*portForward, error
 	}
 	s.mu.Lock()
 	status, reason, child := f.status, f.err, f.child
-	if status != "ready" {
+	if status != "ready" && !f.keep {
 		// Do not leave a failed console forward behind in Port Forwarding.
 		f.status = "stopped"
 		s.removeLocked(f.id)
 	}
 	s.mu.Unlock()
 	if status != "ready" {
-		if child != nil {
+		if child != nil && !f.keep {
 			child.kill()
 		}
 		why := ""
@@ -582,6 +848,10 @@ func init() {
 		case q.method == "POST" && q.route == "/api/forwards":
 			view, err := fwdStateOf(b).create(q.body)
 			return view, 201, true, err
+		case q.method == "POST" && strings.HasPrefix(q.route, "/api/forwards/") && strings.HasSuffix(q.route, "/restart"):
+			id := strings.TrimSuffix(strings.TrimPrefix(q.route, "/api/forwards/"), "/restart")
+			view, err := fwdStateOf(b).restartNow(q.ctx, id)
+			return view, 200, true, err
 		case q.method == "DELETE" && strings.HasPrefix(q.route, "/api/forwards/"):
 			if err := fwdStateOf(b).stop(q.ctx, strings.TrimPrefix(q.route, "/api/forwards/")); err != nil {
 				return nil, 0, true, err

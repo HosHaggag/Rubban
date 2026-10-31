@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -380,5 +383,239 @@ func TestEmbeddedConsoleReportsAForwardThatDoesNotStart(t *testing.T) {
 	// The failed forward does not linger in Port Forwarding.
 	if items := f.get("/api/forwards").Value["items"].([]any); len(items) != 0 {
 		t.Fatalf("lingering %v", items)
+	}
+}
+
+// --- persistence and self-healing ----------------------------------------------------------
+
+func fwdFast(f *fixture) *fwdState {
+	s := fwdStateOf(f.b)
+	s.backoff = func(int) time.Duration { return time.Millisecond }
+	s.portFree = func(int) bool { return true }
+	return s
+}
+
+func fwdSavedList(t *testing.T, f *fixture) []map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(f.b.dataDir, "forwards.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved []map[string]any
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	return saved
+}
+
+func fwdItem(t *testing.T, f *fixture, id string) map[string]any {
+	t.Helper()
+	for _, it := range f.get("/api/forwards").Value["items"].([]any) {
+		if m := it.(map[string]any); m["id"] == id {
+			return m
+		}
+	}
+	t.Fatalf("forward %s not listed", id)
+	return nil
+}
+
+func TestForwardIsRestartedWithTheSameArgsAndLearnedPort(t *testing.T) {
+	f, spawner := fwdFixture(t, nil)
+	fwdFast(f)
+	created := f.post("/api/forwards", map[string]any{"context": "dev", "namespace": "apps", "resource": "pods", "name": "db-0", "remotePort": 5432})
+	id := created.Value["id"].(string)
+	first := spawner.child(0)
+	if !slices.Contains(first.args, ":5432") {
+		t.Fatalf("first args %v", first.args)
+	}
+	first.say("Forwarding from 127.0.0.1:41234 -> 5432\n")
+	fwdWaitFor(t, "the learned port to be saved", func() bool { s := fwdSavedList(t, f); return len(s) == 1 && s[0]["localPort"] == float64(41234) })
+	first.say("error: lost connection to pod\n")
+	first.exit(1)
+	fwdWaitFor(t, "the respawn", func() bool { return spawner.count() == 2 })
+	second := spawner.child(1)
+	if want := []string{"--context=dev", "--namespace=apps", "port-forward", "pods/db-0", "41234:5432", "--address=127.0.0.1"}; !reflect.DeepEqual(second.args, want) {
+		t.Fatalf("restart args %v", second.args)
+	}
+	second.say("Forwarding from 127.0.0.1:41234 -> 5432\n")
+	item := fwdItem(t, f, id)
+	if item["status"] != "ready" || item["restarts"] != float64(1) || item["localPort"] != float64(41234) || item["keep"] != true {
+		t.Fatalf("%v", item)
+	}
+}
+
+func TestForwardShowsTheErrorUntilItIsRestarted(t *testing.T) {
+	f, spawner := fwdFixture(t, nil)
+	s := fwdStateOf(f.b)
+	s.backoff = func(int) time.Duration { return time.Hour }
+	s.portFree = func(int) bool { return true }
+	id := f.post("/api/forwards", map[string]any{"context": "dev", "namespace": "apps", "resource": "pods", "name": "db-0", "localPort": 15432, "remotePort": 5432}).Value["id"].(string)
+	child := spawner.child(0)
+	child.say("Forwarding from 127.0.0.1:15432 -> 5432\n")
+	child.say("E0101 portforward.go: lost connection to pod\n")
+	child.exit(1)
+	fwdWaitFor(t, "error status", func() bool { return fwdItem(t, f, id)["status"] == "error" })
+	item := fwdItem(t, f, id)
+	if item["lastError"] != "E0101 portforward.go: lost connection to pod" || item["retrying"] != true {
+		t.Fatalf("%v", item)
+	}
+	// The user does not wait for the backoff.
+	restarted := f.post("/api/forwards/"+id+"/restart", nil)
+	if restarted.Status != 200 || restarted.Value["status"] != "starting" || restarted.Value["restarts"] != float64(1) || restarted.Value["retrying"] != nil {
+		t.Fatalf("restart %d %v", restarted.Status, restarted.Value)
+	}
+	if spawner.count() != 2 || !slices.Contains(spawner.child(1).args, "15432:5432") {
+		t.Fatalf("children %d", spawner.count())
+	}
+	if f.post("/api/forwards/nope/restart", nil).Status != 404 {
+		t.Fatal("unknown forward")
+	}
+}
+
+func TestForwardRestartKillsTheRunningChildFirst(t *testing.T) {
+	f, spawner := fwdFixture(t, nil)
+	fwdFast(f)
+	id := f.post("/api/forwards", map[string]any{"context": "dev", "resource": "pods", "name": "p", "localPort": 15433, "remotePort": 80}).Value["id"].(string)
+	first := spawner.child(0)
+	first.say("Forwarding from 127.0.0.1:15433 -> 80\n")
+	if r := f.post("/api/forwards/"+id+"/restart", nil); r.Status != 200 {
+		t.Fatalf("%d %v", r.Status, r.Value)
+	}
+	if !first.wasKilled() || spawner.count() != 2 {
+		t.Fatalf("killed=%v children=%d", first.wasKilled(), spawner.count())
+	}
+	// The old child's exit must not start a third one.
+	time.Sleep(50 * time.Millisecond)
+	if spawner.count() != 2 {
+		t.Fatalf("children %d", spawner.count())
+	}
+}
+
+func TestForwardGivesUpAfterTenConsecutiveFailures(t *testing.T) {
+	f, spawner := fwdFixture(t, nil)
+	fwdFast(f)
+	id := f.post("/api/forwards", map[string]any{"context": "dev", "resource": "pods", "name": "p", "localPort": 15434, "remotePort": 80}).Value["id"].(string)
+	for i := 0; i < 10; i++ {
+		fwdWaitFor(t, fmt.Sprintf("child %d", i), func() bool { return spawner.count() > i })
+		spawner.child(i).say(fmt.Sprintf("failure %d\n", i))
+		spawner.child(i).exit(1)
+	}
+	fwdWaitFor(t, "the final error", func() bool { item := fwdItem(t, f, id); return item["status"] == "error" && item["retrying"] == nil })
+	time.Sleep(40 * time.Millisecond)
+	item := fwdItem(t, f, id)
+	if spawner.count() != 10 || item["lastError"] != "failure 9" || item["restarts"] != float64(9) {
+		t.Fatalf("children=%d %v", spawner.count(), item)
+	}
+}
+
+func TestForwardFailureCountResetsAfterAStableMinute(t *testing.T) {
+	f, spawner := fwdFixture(t, nil)
+	s := fwdFast(f)
+	id := f.post("/api/forwards", map[string]any{"context": "dev", "resource": "pods", "name": "p", "localPort": 15435, "remotePort": 80}).Value["id"].(string)
+	s.mu.Lock()
+	fw := s.findLocked(id)
+	fw.fails = 8
+	s.mu.Unlock()
+	spawner.child(0).say("Forwarding from 127.0.0.1:15435 -> 80\n")
+	s.mu.Lock()
+	fw.readyAt = time.Now().Add(-2 * time.Minute)
+	s.mu.Unlock()
+	spawner.child(0).exit(1)
+	fwdWaitFor(t, "a restart instead of giving up", func() bool { return spawner.count() == 2 })
+	s.mu.Lock()
+	fails := fw.fails
+	s.mu.Unlock()
+	if fails != 1 {
+		t.Fatalf("fails %d", fails)
+	}
+}
+
+func TestForwardBackoffDoublesUpToThirtySeconds(t *testing.T) {
+	var got []time.Duration
+	for n := 1; n <= 9; n++ {
+		got = append(got, fwdBackoff(n))
+	}
+	want := []time.Duration{1, 2, 4, 8, 16, 30, 30, 30, 30}
+	for i := range want {
+		if got[i] != want[i]*time.Second {
+			t.Fatalf("backoff %v", got)
+		}
+	}
+}
+
+func TestForwardsAreSavedRestoredAndForgotten(t *testing.T) {
+	f, spawner := fwdFixture(t, nil)
+	fwdFast(f)
+	id := f.post("/api/forwards", map[string]any{"context": "dev", "namespace": "apps", "resource": "services", "name": "web", "localPort": 18081, "remotePort": 80}).Value["id"].(string)
+	saved := fwdSavedList(t, f)
+	want := map[string]any{"id": id, "context": "dev", "namespace": "apps", "resource": "services", "name": "web", "localPort": float64(18081), "remotePort": float64(80)}
+	if len(saved) != 1 || !reflect.DeepEqual(saved[0], want) {
+		t.Fatalf("saved %v", saved)
+	}
+	// A console forward is never written.
+	s := fwdStateOf(f.b)
+	if _, err := s.start(fwdSpec{context: "dev", namespace: "apps", resource: "services", name: "console", remotePort: 15672}, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	s.persist()
+	if saved := fwdSavedList(t, f); len(saved) != 1 {
+		t.Fatalf("console forward saved: %v", saved)
+	}
+
+	// A second run of Rubban in the same data folder restores the forward on its port.
+	data, _ := os.ReadFile(filepath.Join(f.b.dataDir, "forwards.json"))
+	g, spawner2 := fwdFixture(t, nil)
+	fwdFast(g)
+	_ = os.MkdirAll(g.b.dataDir, 0o700)
+	if err := os.WriteFile(filepath.Join(g.b.dataDir, "forwards.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fwdStateOf(g.b).restore()
+	if spawner2.count() != 1 || !reflect.DeepEqual(spawner2.child(0).args, []string{"--context=dev", "--namespace=apps", "port-forward", "services/web", "18081:80", "--address=127.0.0.1"}) {
+		t.Fatalf("restore spawned %d", spawner2.count())
+	}
+	if item := fwdItem(t, g, id); item["keep"] != true || item["status"] != "starting" {
+		t.Fatalf("%v", item)
+	}
+	if r := g.do("DELETE", "/api/forwards/"+id, nil, nil); r.Status != 200 {
+		t.Fatalf("%d", r.Status)
+	}
+	if saved := fwdSavedList(t, g); len(saved) != 0 {
+		t.Fatalf("still saved: %v", saved)
+	}
+	_ = spawner
+}
+
+func TestForwardRestoreKeepsAForwardWhosePortIsBusy(t *testing.T) {
+	f, spawner := fwdFixture(t, nil)
+	s := fwdStateOf(f.b)
+	s.portFree = func(port int) bool { return port != 5432 }
+	s.backoff = func(int) time.Duration { return time.Hour }
+	file := `[{"id":"aaaa","context":"dev","namespace":"apps","resource":"pods","name":"db-0","localPort":5432,"remotePort":5432},
+	 {"id":"bbbb","context":"dev","namespace":"apps","resource":"pods","name":"web-0","localPort":8080,"remotePort":80},
+	 {"id":"cccc","context":"dev --bad","namespace":"Apps","resource":"pods","name":"x","localPort":1,"remotePort":0}]`
+	_ = os.MkdirAll(f.b.dataDir, 0o700)
+	if err := os.WriteFile(filepath.Join(f.b.dataDir, "forwards.json"), []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.restore()
+	busy := fwdItem(t, f, "aaaa")
+	if busy["status"] != "error" || busy["lastError"] != "local port 5432 is in use" || busy["localPort"] != float64(5432) {
+		t.Fatalf("%v", busy)
+	}
+	if spawner.count() != 1 || !slices.Contains(spawner.child(0).args, "8080:80") {
+		t.Fatalf("only the free port may start, got %d", spawner.count())
+	}
+	if len(f.get("/api/forwards").Value["items"].([]any)) != 2 {
+		t.Fatal("an invalid saved entry must be skipped")
+	}
+}
+
+func TestClosingTheBackendKeepsTheSavedForwards(t *testing.T) {
+	f, _ := fwdFixture(t, nil)
+	f.post("/api/forwards", map[string]any{"context": "dev", "resource": "pods", "name": "p", "localPort": 18082, "remotePort": 80})
+	f.b.Close()
+	if saved := fwdSavedList(t, f); len(saved) != 1 {
+		t.Fatalf("saved %v", saved)
 	}
 }

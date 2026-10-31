@@ -294,7 +294,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Usage history and Metrics tabs | `services/proxy`: `get` on the Prometheus service |
 | Logs / exec / attach | `pods/log`: `get`; `pods/exec` and `pods/attach`: `create` |
 | Node shell | create pods in `kube-system` (privileged debug pod) |
-| Port forwarding and RabbitMQ console | `pods/portforward`: `create` |
+| Port forwarding and RabbitMQ console | `pods/portforward`: `create` (forwards you create are restarted and restored by Rubban with the same permission) |
 | Reveal a Secret, RabbitMQ initial login | `secrets`: `get` in that namespace |
 | Argo CD › Manage | `applications.argoproj.io`: `get`, `list`, `watch`, `patch`, `delete` in the Argo CD namespace |
 | Edit, scale, restart, delete | `patch`, `update` or `delete` on the resource |
@@ -315,6 +315,7 @@ Argo CD actions do not need an Argo CD login. Rubban updates the Application obj
 This folder holds:
 
 - `preferences.json`: settings, pinned clusters and Prometheus choices;
+- `forwards.json`: the port forwards you created, restored (on the same local ports) the next time Rubban starts;
 - `port`: the loopback port Rubban reuses on each launch, so settings the page keeps in the browser (column widths, dock height, log options) survive restarts;
 - `update-state.json` and `updates/`: the last update check and downloaded updates;
 - `connection.json`: the local API address and token, written while Rubban runs, for the MCP bridge;
@@ -331,6 +332,7 @@ Rubban never writes to your own kubeconfig; imported kubeconfigs are separate co
 |---|---|
 | No contexts in the cluster selector | Run `kubectl config get-contexts` in a terminal. On macOS, if Terminal shows contexts but Rubban does not, check where `KUBECONFIG` is set (see [3.3](#33-how-rubban-finds-your-tools-on-macos)) and restart Rubban. |
 | A banner says "Credentials for … expired" | Choose **Sign in again** and finish the login in the browser window it opens. Rubban needs `gcloud`, `az` or `aws` on your PATH for that; without it, sign in from your own terminal and press **Retry**. |
+| A port forward shows `error: local port … is in use` | Another program holds that port after Rubban restarted. Stop the forward and create it again on a free port, or close the other program and press **Restart**. |
 | `executable gke-gcloud-auth-plugin not found` | Run `gcloud components install gke-gcloud-auth-plugin`, open a new terminal, and check that `kubectl get ns` works. Then restart Rubban. |
 | `kubectl is not installed or not on PATH` | Install kubectl ([2.1](#21-install-the-command-line-tools-once) or [3.1](#31-install-the-command-line-tools-once)), or bundle it in the build ([5.4](#54-bundle-kubectl-and-helm-optional)). |
 | CPU and memory show `—` everywhere | metrics-server is missing or not ready. `kubectl top nodes` shows the same problem. |
