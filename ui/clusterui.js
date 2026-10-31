@@ -72,10 +72,11 @@ export function renderCluster() {
 }
 
 // ---- Switcher popover ----------------------------------------------------------------------------
-export function openSwitcher() {
+export function openSwitcher({ newTab = false } = {}) {
   const dialog = $('#switcher-dialog'); const search = $('#switcher-search'); const listNode = $('#switcher-list');
   let active = 0; let rows = [];
-  const choose = name => { dialog.close(); if (name !== state.context) hooks.selectContext(name); };
+  search.placeholder = newTab ? 'Open a cluster in a new tab…' : 'Switch cluster…';
+  const choose = name => { dialog.close(); if (newTab) hooks.newClusterTab(name); else if (name !== state.context) hooks.selectContext(name); };
   const row = context => {
     const meta = infoFor(context.name);
     const pinned = favorites().includes(context.name);

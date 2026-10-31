@@ -4,7 +4,7 @@ import { windowRange, covers } from './virtual.js';
 export const $ = (selector, root = document) => root.querySelector(selector);
 const TOKEN = document.querySelector('meta[name="rubban-token"]')?.content || '';
 
-export const state = { context: '', namespace: '*', contexts: [], contextsError: '', health: null, preferences: {}, discovery: [], tabs: [{ id: 'overview', section: 'overview', title: 'Overview' }], active: 'overview', renderId: 0, selected: null, sessionGeneration: 0, pageAbort: null, contextAbort: null, extensions: [], pageLive: false, resync: false };
+export const state = { context: '', namespace: '*', contexts: [], contextsError: '', health: null, preferences: {}, discovery: [], tabs: [{ id: 'overview', context: '', namespace: '*', section: 'overview', title: 'Overview', trail: [] }], active: 'overview', renderId: 0, selected: null, sessionGeneration: 0, pageAbort: null, contextAbort: null, extensions: [], pageLive: false, resync: false };
 // Late-bound app functions (showResource, openView, render, startLogs, …) assigned by app.js.
 export const hooks = {};
 

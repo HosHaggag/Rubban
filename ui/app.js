@@ -21,6 +21,18 @@ import { rabbitmqPage } from './rabbitmq.js';
 const usage = createUsage({ api });
 hooks.usage = usage;
 const activeTab = () => state.tabs.find(tab => tab.id === state.active) || state.tabs[0];
+// Tabs work like a browser's: each one remembers its cluster, namespace and view, so two clusters
+// can be open side by side and switching is a click. The active tab's cluster is state.context.
+let tabSeq = 0;
+const newTabId = () => `tab-${++tabSeq}-${Date.now().toString(36)}`;
+const homeTab = (context, namespace = '*') => ({ id: newTabId(), context, namespace, section: 'overview', title: 'Overview', trail: [] });
+const TABS_STORE = 'rubban.tabs';
+function saveTabs() {
+  writeStore(TABS_STORE, { active: state.tabs.findIndex(tab => tab.id === state.active), tabs: state.tabs.map(({ context, namespace, section, resource, title, trail }) => ({ context, namespace, section, resource, title, trail })) });
+}
+// What a cluster already told us, kept while another tab is active so coming back is instant.
+const clusterCache = new Map();
+const cacheOf = name => { if (!clusterCache.has(name)) clusterCache.set(name, { discovery: [], crds: null, namespaces: null }); return clusterCache.get(name); };
 
 // ---- Sidebar navigation: collapsible sections ------------------------------------------------
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -198,15 +210,16 @@ function navigation() {
 }
 function openView(section, resource, title, { newTab = false } = {}) {
   state.selected = null; $('#drawer').classList.add('hidden');
-  const id = resource ? `${section}:${resource}` : section;
-  const known = allNav().find(item => sameView(item, { section, resource }));
-  if (!state.tabs.some(tab => tab.id === id)) {
-    const view = { id, section, resource, title: title || known?.tabTitle || known?.title || section, trail: (known?.trail || []).map(node => node.title) };
-    // Navigate within the current tab like a browser; the Overview tab stays pinned.
-    const index = state.tabs.findIndex(tab => tab.id === state.active);
-    if (!newTab && index > 0) state.tabs[index] = view; else state.tabs.push(view);
-  }
-  state.active = id;
+  const context = state.context;
+  let tab = state.tabs.find(item => item.context === context && sameView(item, { section, resource }));
+  if (!tab) {
+    const known = allNav().find(item => sameView(item, { section, resource }));
+    tab = { id: newTabId(), context, namespace: state.namespace, section, resource, title: title || known?.tabTitle || known?.title || section, trail: (known?.trail || []).map(node => node.title) };
+    // Navigate within the current tab like a browser; a cluster's Overview tab is its home and stays.
+    const index = state.tabs.findIndex(item => item.id === state.active);
+    if (!newTab && index >= 0 && state.tabs[index].section !== 'overview') state.tabs[index] = tab; else state.tabs.push(tab);
+  } else tab.namespace = state.namespace;
+  state.active = tab.id;
   // Reveal the view's section in the sidebar.
   for (const node of navPath({ section, resource }) || []) if (node.id) state.navOpen.add(node.id);
   saveNavOpen();
@@ -215,11 +228,43 @@ function openView(section, resource, title, { newTab = false } = {}) {
   renderTabs();
   render();
 }
+// Brings a tab to the front, switching cluster and namespace to the tab's own.
+async function activateTab(id) {
+  const tab = state.tabs.find(item => item.id === id);
+  if (!tab) return;
+  state.active = id;
+  if (tab.context && !state.contexts.some(context => context.name === tab.context)) { toast(`${tab.context} is no longer in your kubeconfig.`, true); tab.context = ''; }
+  if (tab.context !== state.context) { await selectContext(tab.context, { namespace: tab.namespace, fromTab: true }); return; }
+  if (tab.namespace !== state.namespace) { state.namespace = tab.namespace; $('#namespace').value = tab.namespace; state.selected = null; $('#drawer').classList.add('hidden'); }
+  navigation(); renderTabs(); render(); saveTabs();
+}
+function closeTab(id) {
+  const index = state.tabs.findIndex(tab => tab.id === id);
+  if (index < 0) return;
+  state.tabs.splice(index, 1);
+  if (!state.tabs.length) state.tabs.push(homeTab(state.context, state.namespace));
+  if (state.active === id) activateTab(state.tabs[Math.min(index, state.tabs.length - 1)].id); else { renderTabs(); saveTabs(); }
+}
+function cycleTab(step) {
+  const index = state.tabs.findIndex(tab => tab.id === state.active);
+  activateTab(state.tabs[(index + step + state.tabs.length) % state.tabs.length].id);
+}
+// A new tab on another cluster, opened at its Overview.
+function newClusterTab(name) {
+  const tab = homeTab(name);
+  state.tabs.push(tab); state.active = tab.id;
+  selectContext(name, { fromTab: true });
+}
 function renderTabs() {
+  const clustersOpen = new Set(state.tabs.map(tab => tab.context)).size > 1;
   $('#tabbar').replaceChildren(...state.tabs.map(tab => {
-    const node = button([icon(tab.icon || allNav().find(item => sameView(item, tab))?.icon || allNav().find(item => sameView(item, tab))?.trail?.[0]?.icon || 'overview', 'ui-svg tab-svg'), el('span', { class: 'tab-title', text: tab.title }), tab.id !== 'overview' ? el('span', { class: 'tab-close', title: 'Close view', role: 'button', 'aria-label': `Close ${tab.title}`, onclick: event => { event.stopPropagation(); state.tabs = state.tabs.filter(item => item.id !== tab.id); if (state.active === tab.id) state.active = state.tabs.at(-1).id; renderTabs(); navigation(); render(); }, text: '×' }) : null], () => { state.active = tab.id; navigation(); renderTabs(); render(); }, `tab${state.active === tab.id ? ' active' : ''}`);
+    const meta = tab.context ? infoFor(tab.context) : null;
+    const mark = meta ? el('span', { class: 'tab-cluster', style: `color:${meta.color}` }, clusterIcon(meta.icon)) : null;
+    const node = button([mark, icon(tab.icon || allNav().find(item => sameView(item, tab))?.icon || allNav().find(item => sameView(item, tab))?.trail?.[0]?.icon || 'overview', 'ui-svg tab-svg'), el('span', { class: 'tab-title', text: clustersOpen && meta ? `${meta.label} · ${tab.title}` : tab.title }), el('span', { class: 'tab-close', title: `Close tab (${MOD}+W)`, role: 'button', 'aria-label': `Close ${tab.title}`, onclick: event => { event.stopPropagation(); closeTab(tab.id); }, text: '×' })], () => activateTab(tab.id), `tab${state.active === tab.id ? ' active' : ''}`);
+    node.title = meta ? `${meta.label} · ${tab.context}${tab.namespace !== '*' ? ` · ${tab.namespace}` : ''}` : 'No cluster';
+    node.addEventListener('auxclick', event => { if (event.button === 1) { event.preventDefault(); closeTab(tab.id); } });
     node.setAttribute('role', 'tab'); node.setAttribute('aria-selected', state.active === tab.id ? 'true' : 'false'); return node;
-  }));
+  }), el('button', { type: 'button', class: 'tab-new', title: `Open a cluster in a new tab (${MOD}+T)`, 'aria-label': 'Open a cluster in a new tab', onclick: () => openSwitcher({ newTab: true }), text: '+' }));
   const tab = activeTab();
   const parts = [...(tab.trail?.length ? tab.trail : ['Workspace']), tab.title];
   $('#breadcrumb').replaceChildren(...parts.flatMap((part, index) => index ? [el('span', { text: '/' }), part] : [part]));
@@ -358,22 +403,34 @@ function consumeResync() { const value = state.resync; state.resync = false; ret
 function refreshView() { state.resync = true; render(); }
 function afterMutation() { if (!state.pageLive) render(); }
 
-async function selectContext(name) {
+// From the switcher, hotbar or welcome page the current tab moves to the cluster; from a tab
+// (fromTab) the tab already names it. Cached discovery, CRDs and namespaces show at once.
+async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
   state.contextAbort?.abort();
   const contextAbort = new AbortController(); state.contextAbort = contextAbort;
-  state.context = name; state.namespace = '*'; state.discovery = []; state.crds = null; state.selected = null;
+  if (!fromTab) {
+    const tab = activeTab();
+    const twin = state.tabs.find(item => item !== tab && item.context === name && sameView(item, tab));
+    if (twin) { state.tabs = state.tabs.filter(item => item !== tab); state.active = twin.id; twin.namespace = namespace; }
+    else { tab.context = name; tab.namespace = namespace; }
+  }
+  const cache = cacheOf(name);
+  state.context = name; state.namespace = namespace; state.discovery = cache.discovery; state.crds = cache.crds; state.selected = null;
   $('#drawer').classList.add('hidden'); state.drawerHistory = [];
   usage.setContext(name);
   $('#context-caption').textContent = name ? 'Live connection · kubeconfig credentials' : 'Choose a kubeconfig context';
-  $('#connection-status').textContent = name ? 'Context selected' : 'No cluster selected';
+  $('#connection-status').textContent = name ? (cache.namespaces ? 'Cluster connected' : 'Context selected') : 'No cluster selected';
   $('#connection-dot').classList.toggle('connected', Boolean(name)); $('#workspace-dot').classList.toggle('connected', Boolean(name));
-  $('#namespace').replaceChildren(el('option', { value: '*', text: 'All namespaces' }));
+  $('#namespace').replaceChildren(el('option', { value: '*', text: 'All namespaces' }), ...(cache.namespaces || []).map(value => el('option', { value, text: value })));
+  $('#namespace').value = namespace;
   renderFavorites();
   navigation();
+  renderTabs();
   render();
+  saveTabs();
   if (!name) return;
   liveList({ resource: 'customresourcedefinitions', context: name, namespace: '*', signal: contextAbort.signal,
-    onData: items => { if (state.context === name) { state.crds = items; navigation(); } },
+    onData: items => { cache.crds = items; if (state.context === name) { state.crds = items; navigation(); } },
     onError: () => { if (state.context === name) { state.crds = null; navigation(); } } });
   let namespacesLoaded = false;
   liveList({ resource: 'namespaces', context: name, namespace: '*', signal: contextAbort.signal,
@@ -381,6 +438,7 @@ async function selectContext(name) {
     onData: items => {
       if (state.context !== name) return;
       const names = items.map(item => item.metadata.name).sort();
+      cache.namespaces = names;
       if (state.namespace !== '*' && !names.includes(state.namespace)) names.push(state.namespace);
       $('#namespace').replaceChildren(el('option', { value: '*', text: 'All namespaces' }), ...names.map(value => el('option', { value, text: value })));
       $('#namespace').value = state.namespace;
@@ -400,7 +458,7 @@ async function selectContext(name) {
   try {
     const discovery = await get('/api/discovery', { context: name }, { signal: contextAbort.signal });
     if (state.context !== name || contextAbort.signal.aborted) return;
-    state.discovery = discovery.resources || []; navigation(); if (activeTab().section === 'discovery') render();
+    cache.discovery = discovery.resources || []; state.discovery = cache.discovery; navigation(); if (activeTab().section === 'discovery') render();
   } catch (error) { if (!contextAbort.signal.aborted) toast(`Discovery: ${error.message}`, true); }
 }
 function welcome() {
@@ -1273,6 +1331,18 @@ function takeTour(reason = 'manual') {
   startTour({ steps: tourSteps(), ctx: { cluster }, reason, skippedNote: cluster ? '' : 'Connect a cluster to see the table and row steps.',
     savePreference: async () => { try { state.preferences = await api('/api/preferences', { method: 'PUT', body: { ...state.preferences, tourCompletedVersion: minorVersion() || 'seen' } }); } catch { /* Preferences are optional here. */ } } });
 }
+// Last session's tabs come back like a browser's; tabs on clusters that are gone are dropped.
+function restoreTabs() {
+  const saved = readStore(TABS_STORE, null);
+  const tabs = Array.isArray(saved?.tabs) ? saved.tabs.filter(tab => tab && typeof tab.section === 'string' && (!tab.context || state.contexts.some(context => context.name === tab.context)))
+    .map(tab => ({ id: newTabId(), context: tab.context || '', namespace: typeof tab.namespace === 'string' ? tab.namespace : '*', section: tab.section, resource: tab.resource, title: String(tab.title || tab.section), trail: Array.isArray(tab.trail) ? tab.trail : [] })) : [];
+  if (!tabs.length) { render(); return; }
+  state.tabs = tabs;
+  const active = tabs[Math.min(Math.max(Number(saved.active) || 0, 0), tabs.length - 1)];
+  state.active = active.id;
+  if (active.context) selectContext(active.context, { namespace: active.namespace, fromTab: true });
+  else { navigation(); renderTabs(); render(); }
+}
 applyTheme(storedTheme());
 async function init() {
   document.querySelectorAll('[data-icon]').forEach(node => {
@@ -1287,13 +1357,13 @@ async function init() {
   if (results[2].status === 'fulfilled') { state.preferences = results[2].value; applyTheme(state.preferences.theme || 'system'); }
   renderFavorites();
   for (const result of results) if (result.status === 'rejected') toast(result.reason.message, true);
-  render();
+  restoreTabs();
   setupUpdates({ openSettings: () => openView('settings') });
   if (results[2].status === 'fulfilled' && !state.preferences.tourCompletedVersion) setTimeout(() => takeTour('first-run'), 600);
 }
-$('#context-switcher').addEventListener('click', openSwitcher);
+$('#context-switcher').addEventListener('click', () => openSwitcher());
 $('#pin-context').addEventListener('click', task(toggleFavorite));
-$('#namespace').addEventListener('change', event => { state.namespace = event.target.value; $('#drawer').classList.add('hidden'); render(); });
+$('#namespace').addEventListener('change', event => { state.namespace = event.target.value; activeTab().namespace = state.namespace; $('#drawer').classList.add('hidden'); renderTabs(); render(); saveTabs(); });
 $('#nav-search').addEventListener('input', event => navigation(event.target.value));
 $('#refresh').addEventListener('click', refreshView);
 $('#reload-contexts').addEventListener('click', task(reloadContexts));
@@ -1316,6 +1386,12 @@ document.addEventListener('pointerdown', event => {
 }, { capture: true });
 setupDock();
 if (MOD !== 'Ctrl') { const kbd = $('#command-open kbd'); if (kbd) kbd.textContent = `${MOD}K`; $('#dock-min')?.setAttribute('title', `Hide dock (${MOD}+\`)`); }
-document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === '`') { event.preventDefault(); toggleDock(); } if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); openSwitcher(); } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); commandPalette(); } if ((event.ctrlKey || event.metaKey) && event.key === '1') { event.preventDefault(); openView('overview'); } if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closeDrawer(); });
-Object.assign(hooks, { takeTour, selectContext, reloadContexts, labelFor, clusterEnv: () => envFor(state.context), showResource, openView, render, afterMutation, openLogs, openTerminal, argoMenu, openExternal: openExternalLink });
+document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === '`') { event.preventDefault(); toggleDock(); } if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); openSwitcher(); } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); commandPalette(); } if ((event.ctrlKey || event.metaKey) && event.key === '1') { event.preventDefault(); openView('overview'); } if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closeDrawer();
+  // Browser-style tab keys: new cluster tab, close, cycle.
+  const mod = event.ctrlKey || event.metaKey;
+  if (mod && !event.shiftKey && event.key.toLowerCase() === 't') { event.preventDefault(); openSwitcher({ newTab: true }); }
+  else if (mod && !event.shiftKey && event.key.toLowerCase() === 'w' && !document.querySelector('dialog[open]')) { event.preventDefault(); closeTab(state.active); }
+  else if (event.ctrlKey && (event.key === 'Tab' || event.key === 'PageDown' || event.key === 'PageUp')) { event.preventDefault(); cycleTab(event.shiftKey || event.key === 'PageUp' ? -1 : 1); }
+});
+Object.assign(hooks, { takeTour, selectContext, newClusterTab, activateTab, reloadContexts, labelFor, clusterEnv: () => envFor(state.context), showResource, openView, render, afterMutation, openLogs, openTerminal, argoMenu, openExternal: openExternalLink });
 init();

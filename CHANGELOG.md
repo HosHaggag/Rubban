@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.2: Cluster tabs
+
+- **Tabs work like a browser's.** Every tab remembers its cluster, namespace and view, so two clusters can be open side by side and switching between them is one click. The **+** button (or Ctrl+T) opens a cluster in a new tab; Ctrl+W closes a tab, Ctrl+Tab cycles, middle-click closes. Tabs show their cluster's icon and colour, and the cluster name once more than one cluster is open. Last session's tabs come back on the next launch. What a cluster already reported (namespaces, custom resources, API discovery) is kept while another tab is active, so coming back is instant.
+- Windows: `Rubban.exe` carries its icon again (Explorer, taskbar and title bar were blank), plus version information and a DPI-aware application manifest.
+- A slow TLS handshake to GitHub no longer fails the update check (30 s instead of 10 s).
+
 ## 0.12.1: First published build of the Go program
 
 - Everything listed under 0.12.0 below, which was not published as a release.

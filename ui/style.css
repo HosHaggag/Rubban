@@ -206,6 +206,10 @@ main:has(> .fill-page){padding-bottom:12px}
 .card-label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)}
 .card-icon{color:var(--dim);font-size:13px}
 .cards .card-icon{display:none}
+.tab-cluster{display:inline-flex;flex:none;width:14px;height:14px;align-items:center;justify-content:center}
+.tab-cluster .cluster-svg{width:14px;height:14px}
+.tab-new{flex:none;border:0;border-radius:0;background:transparent;color:var(--muted);width:34px;padding:0;font-size:17px;line-height:1}
+.tab-new:hover{background:var(--hover);color:var(--strong)}
 .tab-svg{width:13px;height:13px;stroke-width:1.5;opacity:.8}
 .tab.active .tab-svg{stroke:var(--strong);opacity:1}
 .tab>span.tab-title{overflow:hidden;text-overflow:ellipsis;min-width:0}

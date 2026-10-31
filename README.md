@@ -183,8 +183,9 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
    - Namespaces, Events, Helm and Access Control;
    - Flux, Gateway API and Custom Resources.
    Ctrl-click (⌘-click on macOS) opens a view in a new tab.
-4. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
-5. **Settings** is the gear at the bottom of the sidebar. It holds:
+4. **Tabs work like a browser's.** Each tab remembers its cluster, namespace and view, so two clusters can be open side by side. **+** at the end of the tab bar (or Ctrl+T) opens another cluster in a new tab; the selector at the top left switches the *current* tab's cluster. Last session's tabs come back on the next launch.
+5. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
+6. **Settings** is the gear at the bottom of the sidebar. It holds:
    - the Prometheus service used for each cluster (or none);
    - the node shell image;
    - the keyboard shortcuts.
@@ -193,6 +194,9 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 |---|---|---|
 | Command palette | Ctrl+K | ⌘K |
 | Cluster overview | Ctrl+1 | ⌘1 |
+| Switch cluster (current tab) | Ctrl+Shift+K | ⌘⇧K |
+| Open a cluster in a new tab | Ctrl+T | ⌘T |
+| Close tab · next tab · previous tab | Ctrl+W · Ctrl+Tab · Ctrl+Shift+Tab | ⌘W · Ctrl+Tab · Ctrl+Shift+Tab |
 | Show or hide the terminal dock | Ctrl+\` | Ctrl+\` |
 | Filter the sidebar | / | / |
 | Close the details panel | Esc | Esc |
