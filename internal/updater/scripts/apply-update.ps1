@@ -1,8 +1,11 @@
 # Applies a downloaded Rubban update after Rubban has exited. Started detached by internal/updater:
 #   powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File apply-update.ps1 -Zip <zip> -Install <folder> -ProcessId <pid> -Exe <Rubban.exe> -ResultFile <json> -Version <v>
+# A build put in place by the installer passes -Setup <Rubban-<v>-Setup.exe> instead of -Zip: the same
+# wait, result file and restart, with the installer run silently over the existing install.
 # Always starts a Rubban again (the new one, or the old one when something went wrong) and writes result.json.
 param(
-  [Parameter(Mandatory)][string]$Zip,
+  [string]$Zip = '',
+  [string]$Setup = '',
   [Parameter(Mandatory)][string]$Install,
   [Parameter(Mandatory)][int]$ProcessId,
   [Parameter(Mandatory)][string]$Exe,
@@ -11,7 +14,8 @@ param(
   [switch]$NoStart
 )
 $ErrorActionPreference = 'Stop'
-$work = Split-Path $Zip -Parent
+if (-not $Zip -and -not $Setup) { throw 'Pass -Zip or -Setup.' }
+$work = Split-Path ($(if ($Setup) { $Setup } else { $Zip })) -Parent
 $extract = Join-Path $work 'extract'
 $backup = Join-Path $work 'backup'
 function Write-Result([bool]$ok, [string]$message) {
@@ -23,6 +27,12 @@ try {
   $deadline = (Get-Date).AddSeconds(60)
   while ((Get-Date) -lt $deadline -and ((Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) -or (Get-Process -Name Rubban -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Install, [StringComparison]::OrdinalIgnoreCase) }))) { Start-Sleep -Milliseconds 250 }
   if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) { throw 'Rubban did not close in time.' }
+  if ($Setup) {
+    $log = Join-Path $work 'setup.log'
+    $run = Start-Process -FilePath $Setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', "/LOG=$log") -Wait -PassThru
+    if ($run.ExitCode -ne 0) { throw "The installer exited with code $($run.ExitCode). See $log." }
+    $ok = $true
+  } else {
   Remove-Item $extract, $backup -Recurse -Force -ErrorAction SilentlyContinue
   Expand-Archive -LiteralPath $Zip -DestinationPath $extract -Force
   $source = Get-ChildItem $extract -Recurse -Filter Rubban.exe | Select-Object -First 1
@@ -40,10 +50,11 @@ try {
     throw
   }
   $ok = $true
+  }
 } catch {
   $message = $_.Exception.Message
 }
 Remove-Item $extract, $backup -Recurse -Force -ErrorAction SilentlyContinue
-if ($ok) { Remove-Item $Zip -Force -ErrorAction SilentlyContinue }
+if ($ok) { Remove-Item $(if ($Setup) { $Setup } else { $Zip }) -Force -ErrorAction SilentlyContinue }
 Write-Result $ok $message
 if (-not $NoStart) { Start-Process $Exe }

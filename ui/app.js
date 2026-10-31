@@ -1450,6 +1450,8 @@ async function init() {
   renderFavorites();
   for (const result of results) if (result.status === 'rejected') toast(result.reason.message, true);
   restoreTabs();
+  // The installer's first run copies the settings of the layout it replaced; say so once.
+  if (state.health?.migratedFrom && readStore('rubban.migratedToast', '') !== state.health.migratedFrom) { toast(`Settings copied from ${state.health.migratedFrom}.`); writeStore('rubban.migratedToast', state.health.migratedFrom); }
   forwardsPoller.refresh();
   setupUpdates({ openSettings: () => openView('settings') });
   if (results[2].status === 'fulfilled' && !state.preferences.tourCompletedVersion) setTimeout(() => takeTour('first-run'), 600);

@@ -71,10 +71,14 @@ jobs:
           name: smoke-windows
           path: smoke-out
           if-no-files-found: ignore
+      - name: Build the installer
+        run: go run ./cmd/buildtool installer
       - uses: actions/upload-artifact@v7
         with:
           name: release-windows
-          path: release/*.zip
+          path: |
+            release/*.zip
+            release/*.exe
   macos:
     needs: check
     runs-on: macos-latest

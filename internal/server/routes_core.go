@@ -128,7 +128,7 @@ func (b *Backend) dispatch(q *request) (any, int, error) {
 	method, route := q.method, q.route
 	switch {
 	case method == "GET" && route == "/api/health":
-		return obj{"version": b.version, "tools": b.tools, "platform": nodePlatform(), "live": b.live != nil}, 200, nil
+		return obj{"version": b.version, "tools": b.tools, "platform": nodePlatform(), "live": b.live != nil, "migratedFrom": b.opts.MigratedFrom}, 200, nil
 	case method == "GET" && route == "/api/contexts":
 		return b.routeContexts(q)
 	case method == "GET" && route == "/api/kubeconfigs":

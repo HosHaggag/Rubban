@@ -45,6 +45,8 @@ type Options struct {
 	DesktopBridge []byte
 	// Desktop enables the /api/desktop/* routes (desktop app only).
 	Desktop DesktopHooks
+	// MigratedFrom is the folder this run copied its settings from (installer builds, first run).
+	MigratedFrom string
 	// Smoke enables the smoke-test reporting routes.
 	Smoke   bool
 	Version string

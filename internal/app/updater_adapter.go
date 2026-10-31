@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"github.com/HosHaggag/rubban/internal/logging"
@@ -27,6 +28,7 @@ func newUpdaterAdapter(dataDir, version, exe string, packaged bool, log *logging
 		DataDir:        dataDir,
 		CurrentVersion: version,
 		IsPackaged:     packaged,
+		Installed:      runtime.GOOS == "windows" && Installed(exe),
 		ExecPath:       exe,
 		Log:            log,
 		OnState:        a.broadcast,

@@ -234,3 +234,40 @@ func TestWindowsResourcesObject(t *testing.T) {
 		t.Fatal("the .syso should be removed after the build")
 	}
 }
+
+func TestManifestListsTheSetupWhenThereIsOne(t *testing.T) {
+	zip := fileInfo{"Rubban-0.13.0-Windows-x64.zip", strings.Repeat("a", 64), 10}
+	setup := fileInfo{"Rubban-0.13.0-Setup.exe", strings.Repeat("d", 64), 40}
+	old := fileInfo{"Rubban-0.12.0-Setup.exe", strings.Repeat("e", 64), 40}
+	sums, latest, err := buildManifest([]fileInfo{old, setup, zip}, "0.13.0", "n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.Assets["win32-x64-setup"] != setup || latest.Assets["win32-x64"] != zip || len(latest.Assets) != 2 {
+		t.Fatalf("assets %v", latest.Assets)
+	}
+	if !strings.Contains(sums, strings.Repeat("d", 64)+"  Rubban-0.13.0-Setup.exe\n") {
+		t.Fatalf("sums %q", sums)
+	}
+	// Without a setup the manifest is what it was, and a setup alone is not a release.
+	_, plain, err := buildManifest([]fileInfo{zip}, "0.13.0", "n")
+	if err != nil || len(plain.Assets) != 1 || plain.Assets["win32-x64-setup"].Name != "" {
+		t.Fatalf("without setup: %v %v", plain.Assets, err)
+	}
+	if _, _, err := buildManifest([]fileInfo{setup}, "0.13.0", "n"); err == nil {
+		t.Fatal("a setup without a zip was accepted")
+	}
+}
+
+func TestDescribeReleaseFilesIncludesTheSetup(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"Rubban-0.13.0-Windows-x64.zip", "Rubban-0.13.0-Setup.exe", "notes.md", "other.exe"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := describeZips(dir)
+	if err != nil || len(files) != 2 || files[0].Name != "Rubban-0.13.0-Setup.exe" || files[1].Name != "Rubban-0.13.0-Windows-x64.zip" {
+		t.Fatalf("%v %v", files, err)
+	}
+}

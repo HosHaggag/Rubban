@@ -17,6 +17,11 @@ import (
 var manifestTargets = map[string]string{"Windows-x64": "win32-x64", "macOS-arm64": "darwin-arm64", "macOS-x64": "darwin-x64"}
 var assetRE = regexp.MustCompile(`^Rubban-(.+)-(Windows-x64|macOS-arm64|macOS-x64)\.zip$`)
 
+// The Windows installer is listed under its own key; builds put in place by it update from this asset.
+var setupRE = regexp.MustCompile(`^Rubban-(.+)-Setup\.exe$`)
+
+const setupKey = "win32-x64-setup"
+
 type fileInfo struct {
 	Name   string `json:"name"`
 	SHA256 string `json:"sha256"`
@@ -38,12 +43,19 @@ func buildManifest(files []fileInfo, version, notes string) (string, latestManif
 			assets[manifestTargets[m[2]]] = f
 		}
 	}
+	// The setup is optional (releases before the installer have none) and never stands alone.
 	if len(assets) == 0 {
 		return "", latestManifest{}, fmt.Errorf("No Rubban-%s-*.zip files found", version)
+	}
+	for _, f := range files {
+		if m := setupRE.FindStringSubmatch(f.Name); m != nil && m[1] == version {
+			assets[setupKey] = f
+		}
 	}
 	return strings.Join(sums, "\n") + "\n", latestManifest{Version: version, Assets: assets, Notes: notes}, nil
 }
 
+// describeZips hashes the release files of a folder: the zips and the Windows installer.
 func describeZips(dir string) ([]fileInfo, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -51,7 +63,7 @@ func describeZips(dir string) ([]fileInfo, error) {
 	}
 	var out []fileInfo
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".zip") {
+		if e.IsDir() || !(strings.HasSuffix(e.Name(), ".zip") || setupRE.MatchString(e.Name())) {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))

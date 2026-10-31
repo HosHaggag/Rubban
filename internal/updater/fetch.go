@@ -94,6 +94,7 @@ type Manifest struct {
 
 var (
 	assetNameRE = regexp.MustCompile(`^Rubban-[0-9A-Za-z.+-]+\.zip$`)
+	setupNameRE = regexp.MustCompile(`^Rubban-[0-9A-Za-z.+]+-Setup\.exe$`)
 	sha256RE    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
@@ -117,7 +118,12 @@ func ValidateManifest(m *Manifest, key string) (version string, asset *Asset, no
 	}
 	if a := m.Assets[key]; a != nil {
 		name, sum := asString(a.Name), asString(a.SHA256)
-		if !assetNameRE.MatchString(name) {
+		// The "<platform>-<arch>-setup" key carries the Windows installer, every other key a zip.
+		nameRE := assetNameRE
+		if strings.HasSuffix(key, "-setup") {
+			nameRE = setupNameRE
+		}
+		if !nameRE.MatchString(name) {
 			return "", nil, "", errors.New("The update manifest names an invalid file")
 		}
 		if !sha256RE.MatchString(sum) {
@@ -135,3 +141,6 @@ func ValidateManifest(m *Manifest, key string) (version string, asset *Asset, no
 	}
 	return strings.TrimPrefix(strings.TrimSpace(vs), "v"), asset, notes, nil
 }
+
+// isSetupAsset reports whether a manifest file is the Windows installer.
+func isSetupAsset(name string) bool { return setupNameRE.MatchString(name) }

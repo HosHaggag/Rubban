@@ -77,31 +77,20 @@ Open a **new** PowerShell window and check that `kubectl get ns` works.
 
 ### 2.2 Install Rubban
 
-1. Get `Rubban-<version>-Windows-x64.zip`. You can build it yourself with `go run ./cmd/buildtool package --os windows` (see [section 5](#5-build-from-source-wsl-linux-macos-or-windows)).
-2. Right-click the zip, choose **Properties**, tick **Unblock** and press **OK**. Then choose **Extract All…**.
-3. In the extracted folder, run:
+1. Download `Rubban-<version>-Setup.exe` from the release page and run it. It installs for your user only (no administrator prompt), adds **Rubban** to the Start menu and offers a desktop shortcut.
+2. Rubban lives in `%LOCALAPPDATA%\Programs\Rubban`. Your settings, imported kubeconfigs and logs live in `%LOCALAPPDATA%\Rubban`, so they stay the same across updates.
+3. If you ran Rubban from a zip before, the first start copies its settings (from the `Rubban-Data` folder next to the zip, or from `%USERPROFILE%\Rubban\Rubban-Data`) into the new folder. The old folder is left in place.
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\Install-Rubban.ps1
-   ```
+**SmartScreen.** Rubban is not code-signed, so Windows may show *Windows protected your PC* when you run the setup or the first launch. Choose **More info**, then **Run anyway**.
 
-   Add `-DesktopShortcut` for a desktop icon, or `-Destination D:\Tools\Rubban` to install somewhere else.
+**Portable.** Download `Rubban-<version>-Windows-x64.zip` instead, right-click it, choose **Properties**, tick **Unblock**, then **Extract All…**, and run `Rubban.exe`. Settings then go to a `Rubban-Data` folder next to the extracted folder. You can also run `powershell -ExecutionPolicy Bypass -File .\Install-Rubban.ps1` from the extracted folder to copy Rubban to `%USERPROFILE%\Rubban\Rubban-Windows` (add `-DesktopShortcut` for a desktop icon).
 
-The installer:
-
-- copies Rubban to `%USERPROFILE%\Rubban\Rubban-Windows`;
-- keeps any kubectl and helm an earlier install bundled;
-- keeps your settings in `%USERPROFILE%\Rubban\Rubban-Data`;
-- adds **Rubban** to the Start menu and opens it.
-
-**SmartScreen.** Rubban is not code-signed, so the first launch may show *Windows protected your PC*. Choose **More info**, then **Run anyway**.
-
-**Without the installer.** Extract the zip anywhere and run `Rubban.exe`. Settings then go to a `Rubban-Data` folder next to the extracted folder.
+You can build both yourself with `go run ./cmd/buildtool package --os windows`, then `go run ./cmd/buildtool installer` (needs [Inno Setup 6](https://jrsoftware.org/isinfo.php)); see [section 5](#5-build-from-source-wsl-linux-macos-or-windows).
 
 ### 2.3 Update or remove
 
-- **Update:** close Rubban, then run the new version's `Install-Rubban.ps1`. Your settings and bundled tools are kept.
-- **Remove:** close Rubban. Delete `%USERPROFILE%\Rubban` (this includes your settings) and the **Rubban** Start menu shortcut.
+- **Update:** use **Settings › Updates**, or run the new `Rubban-<version>-Setup.exe`. Your settings are kept. A portable copy updates the same way from Settings, or by running the new zip's `Install-Rubban.ps1`.
+- **Remove:** **Settings › Apps › Installed apps › Rubban › Uninstall**. The uninstaller asks whether to delete your settings too (the default is to keep them). A portable copy is removed by deleting its folder and its `Rubban-Data`.
 
 ---
 
@@ -237,7 +226,7 @@ go run ./cmd/buildtool package --os darwin --arch arm64      # release/Rubban-<v
 go run ./cmd/buildtool package --os darwin --arch x64        # release/Rubban-<version>-macOS-x64.zip (on a Mac)
 ```
 
-The Windows zip holds `Rubban.exe`, `rubban-cli.exe` (for `web` and `mcp`), `VERSION`, `Install-Rubban.ps1`, this README, the licence files and `tools/` when kubectl and helm are bundled. The macOS zip holds `Rubban.app`, `Install-Rubban.command` and this README. Builds made on a Mac are signed ad hoc with `codesign`; builds made on Linux/WSL use `rcodesign` when it is installed.
+`go run ./cmd/buildtool installer` (Windows, needs Inno Setup 6) wraps that folder into `release/Rubban-<version>-Setup.exe`. The Windows zip holds `Rubban.exe`, `rubban-cli.exe` (for `web` and `mcp`), `VERSION`, `Install-Rubban.ps1`, this README, the licence files and `tools/` when kubectl and helm are bundled. The macOS zip holds `Rubban.app`, `Install-Rubban.command` and this README. Builds made on a Mac are signed ad hoc with `codesign`; builds made on Linux/WSL use `rcodesign` when it is installed.
 
 To copy the zips from WSL to your Windows Downloads folder:
 
@@ -310,6 +299,7 @@ Argo CD actions do not need an Argo CD login. Rubban updates the Application obj
 
 | Install | Settings and session files |
 |---|---|
+| Windows, installed with `Setup.exe` | `%LOCALAPPDATA%\Rubban` |
 | Windows, installed with `Install-Rubban.ps1` | `%USERPROFILE%\Rubban\Rubban-Data` |
 | Windows, extracted zip | `Rubban-Data` next to the extracted folder |
 | macOS | `~/Library/Application Support/Rubban` |
@@ -365,7 +355,7 @@ Rubban never writes to your own kubeconfig; imported kubeconfigs are separate co
 
 ```powershell
 # Windows
-& "$env:USERPROFILE\Rubban\Rubban-Windows\rubban-cli.exe" mcp --connection-file "$env:USERPROFILE\Rubban\Rubban-Data\connection.json"
+& "$env:LOCALAPPDATA\Programs\Rubban\rubban-cli.exe" mcp --connection-file "$env:LOCALAPPDATA\Rubban\connection.json"
 ```
 
 ```bash

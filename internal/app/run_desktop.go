@@ -100,7 +100,14 @@ func (s *shell) run() int {
 	if err := os.MkdirAll(s.dataDir, 0o755); err != nil {
 		return s.fatal(err)
 	}
+	// A build put in place by the installer starts with the settings of the layout it replaces.
+	migratedFrom, migrateErr := MigrateData(exe, s.dataDir, home)
 	s.logger = logging.New(filepath.Join(s.dataDir, "logs"), 0, 0)
+	if migrateErr != nil {
+		s.logger.Warn("Could not copy settings from an earlier install: "+migrateErr.Error(), nil)
+	} else if migratedFrom != "" {
+		s.logger.Info("Copied settings from "+migratedFrom, nil)
+	}
 	appRoot := AppRoot(exe, runtime.GOOS)
 	packaged := Packaged(exe)
 
@@ -118,6 +125,7 @@ func (s *shell) run() int {
 		DesktopBridge: BridgeScript(bridgeSource, runtime.GOOS, s.smoke),
 		Desktop:       &hooks{s: s},
 		Smoke:         s.smoke,
+		MigratedFrom:  migratedFrom,
 	}
 	s.backend = server.New(opts)
 	s.conn, err = s.backend.Start(PreferredPort(s.dataDir))

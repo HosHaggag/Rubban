@@ -91,7 +91,10 @@ type Config struct {
 	DataDir        string
 	CurrentVersion string
 	IsPackaged     bool
-	Repo           string // default HosHaggag/Rubban
+	// Installed is true for a Windows build put in place by the installer: updates then come as the
+	// Setup.exe of the release (when it has one) and run silently instead of replacing the folder.
+	Installed bool
+	Repo      string // default HosHaggag/Rubban
 
 	// Platform and Arch use Node's names (win32/darwin/linux, x64/arm64) because they form the
 	// manifest key "<platform>-<arch>". Defaults come from the running binary.
@@ -347,6 +350,16 @@ func (u *Updater) doCheck(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if u.cfg.Installed && u.cfg.Platform == "win32" {
+		// Releases older than the installer have no setup entry: those keep updating from the zip.
+		_, setup, _, err := ValidateManifest(&manifest, u.key+"-setup")
+		if err != nil {
+			return err
+		}
+		if setup != nil {
+			asset = setup
+		}
+	}
 	lastCheck := u.cfg.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	cmp, err := CompareVersions(u.cfg.CurrentVersion, version)
 	if err != nil {
@@ -552,7 +565,12 @@ func (u *Updater) Install() (State, error) {
 			root = `C:\Windows`
 		}
 		command = filepath.Join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-		args = []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script, "-Zip", zip, "-Install", filepath.Dir(u.cfg.ExecPath), "-ProcessId", pid, "-Exe", u.cfg.ExecPath, "-ResultFile", u.resultPath, "-Version", version}
+		// The helper takes the downloaded file as -Setup (installer) or -Zip (portable folder).
+		kind := "-Zip"
+		if isSetupAsset(asset.Name) {
+			kind = "-Setup"
+		}
+		args = []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script, kind, zip, "-Install", filepath.Dir(u.cfg.ExecPath), "-ProcessId", pid, "-Exe", u.cfg.ExecPath, "-ResultFile", u.resultPath, "-Version", version}
 	} else {
 		bundle := filepath.Dir(filepath.Dir(filepath.Dir(u.cfg.ExecPath))) // Rubban.app/Contents/MacOS/Rubban
 		command = "/bin/bash"

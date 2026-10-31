@@ -90,6 +90,9 @@ type opts struct {
 	env      map[string]string
 	exec     string
 	tempDir  string
+	// installed marks a build put in place by the Windows installer; withSetup adds the release's
+	// Setup.exe to the manifest.
+	installed, withSetup bool
 }
 
 func setup(t *testing.T, o opts) *harness {
@@ -114,6 +117,12 @@ func setup(t *testing.T, o opts) *harness {
 	h.name = "Rubban-" + o.latest + "-Windows-x64.zip"
 	key := o.platform + "-x64"
 	h.manifest = map[string]any{"version": o.latest, "notes": "- better", "assets": map[string]any{key: map[string]any{"name": h.name, "sha256": sha(o.payload), "size": len(o.payload)}}}
+	if o.withSetup {
+		h.manifest["assets"].(map[string]any)[key+"-setup"] = map[string]any{"name": "Rubban-" + o.latest + "-Setup.exe", "sha256": sha(o.payload), "size": len(o.payload)}
+		if o.installed {
+			h.name = "Rubban-" + o.latest + "-Setup.exe"
+		}
+	}
 	client := &http.Client{Transport: roundTrip(h.serve)}
 	exe := o.exec
 	if exe == "" {
@@ -125,7 +134,7 @@ func setup(t *testing.T, o opts) *harness {
 	}
 	env := o.env
 	h.u = New(Config{
-		DataDir: h.dataDir, CurrentVersion: o.version, IsPackaged: packaged, Platform: o.platform, Arch: "x64",
+		DataDir: h.dataDir, CurrentVersion: o.version, IsPackaged: packaged, Installed: o.installed, Platform: o.platform, Arch: "x64",
 		ExecPath: exe, TempDir: tempDir, PID: 4242, HTTPClient: client,
 		Env:     func(k string) string { return env[k] },
 		OnState: func(s State) { h.mu.Lock(); h.states = append(h.states, s); h.mu.Unlock() },
@@ -857,5 +866,83 @@ func TestApplyUpdatePs1ReplacesInstallFolderAndRestoresOnFailure(t *testing.T) {
 	}
 	if readFile(t, filepath.Join(install, "marker.txt")) != "old" || readFile(t, filepath.Join(install, "Rubban.exe")) != "exe-old" {
 		t.Error("previous version was not restored")
+	}
+}
+
+func TestInstalledBuildUpdatesFromTheSetupAndPortableFromTheZip(t *testing.T) {
+	spawnedFile := func(h *harness) (kind, file string) {
+		args := h.spawned[0]
+		for i, a := range args {
+			if (a == "-Setup" || a == "-Zip") && i+1 < len(args) {
+				return a, args[i+1]
+			}
+		}
+		t.Fatalf("neither -Setup nor -Zip in %v", args)
+		return "", ""
+	}
+	installed := setup(t, opts{installed: true, withSetup: true})
+	installed.readyUpdate()
+	if _, err := installed.u.Install(); err != nil {
+		t.Fatal(err)
+	}
+	kind, file := spawnedFile(installed)
+	if kind != "-Setup" || filepath.Base(file) != "Rubban-0.11.0-Setup.exe" || file != installed.zipPath() {
+		t.Fatalf("installed build: %s %s", kind, file)
+	}
+	if !strings.Contains(strings.Join(installed.spawned[0], " "), "-Install "+filepath.Dir(installed.u.cfg.ExecPath)) {
+		t.Fatalf("the helper still needs the install folder: %v", installed.spawned[0])
+	}
+
+	portable := setup(t, opts{withSetup: true})
+	portable.readyUpdate()
+	if _, err := portable.u.Install(); err != nil {
+		t.Fatal(err)
+	}
+	if kind, file := spawnedFile(portable); kind != "-Zip" || filepath.Base(file) != "Rubban-0.11.0-Windows-x64.zip" {
+		t.Fatalf("portable build: %s %s", kind, file)
+	}
+
+	// A release that predates the installer has no setup entry: the installed build takes the zip.
+	older := setup(t, opts{installed: true})
+	older.readyUpdate()
+	if _, err := older.u.Install(); err != nil {
+		t.Fatal(err)
+	}
+	if kind, file := spawnedFile(older); kind != "-Zip" || filepath.Base(file) != "Rubban-0.11.0-Windows-x64.zip" {
+		t.Fatalf("release without setup: %s %s", kind, file)
+	}
+
+	// macOS never looks at the setup entry.
+	mac := setup(t, opts{platform: "darwin", installed: true, withSetup: true, exec: "/Applications/Rubban.app/Contents/MacOS/Rubban"})
+	mac.readyUpdate()
+	if mac.u.asset.Name != "Rubban-0.11.0-Windows-x64.zip" {
+		t.Fatalf("mac asset %s", mac.u.asset.Name)
+	}
+}
+
+func TestSetupAssetNamesAreValidatedPerKey(t *testing.T) {
+	sum, size := strings.Repeat("a", 64), float64(10)
+	manifest := func(key, name string) *Manifest {
+		return &Manifest{Version: "1.0.0", Assets: map[string]*manifestAsset{key: {Name: name, SHA256: sum, Size: size}}}
+	}
+	if _, a, _, err := ValidateManifest(manifest("win32-x64-setup", "Rubban-1.0.0-Setup.exe"), "win32-x64-setup"); err != nil || a == nil {
+		t.Fatalf("good setup: %v", err)
+	}
+	for name, m := range map[string]*Manifest{
+		"a zip under the setup key":   manifest("win32-x64-setup", "Rubban-1.0.0-Windows-x64.zip"),
+		"an exe under the zip key":    manifest("win32-x64", "Rubban-1.0.0-Setup.exe"),
+		"a path in the setup name":    manifest("win32-x64-setup", "..\\Rubban-1.0.0-Setup.exe"),
+		"a different program's setup": manifest("win32-x64-setup", "Other-1.0.0-Setup.exe"),
+	} {
+		key := "win32-x64"
+		for k := range m.Assets {
+			key = k
+		}
+		if _, _, _, err := ValidateManifest(m, key); err == nil || !strings.Contains(err.Error(), "invalid file") {
+			t.Errorf("%s accepted: %v", name, err)
+		}
+	}
+	if !isSetupAsset("Rubban-0.13.0-Setup.exe") || isSetupAsset("Rubban-0.13.0-Windows-x64.zip") {
+		t.Fatal("isSetupAsset")
 	}
 }

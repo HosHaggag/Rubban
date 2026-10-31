@@ -34,7 +34,8 @@ if (-not (Test-Path (Join-Path $Source 'tools'))) {
 
 if (Test-Path $Destination) {
   if ((Get-ChildItem $Destination -Force | Select-Object -First 1) -and -not (Test-RubbanInstall $Destination)) { throw "$Destination is not empty and is not a Rubban install. Choose another -Destination." }
-  Remove-Item (Join-Path $Destination '*') -Recurse -Force
+  # Keep the installer's marker and uninstaller when a zip update lands on an installed copy.
+  Get-ChildItem $Destination -Force | Where-Object { $_.Name -ne 'installed.json' -and $_.Name -notlike 'unins*' } | Remove-Item -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 Get-ChildItem $Source -Force | Where-Object { $_.Name -ne 'Install-Rubban.ps1' } | Copy-Item -Destination $Destination -Recurse -Force

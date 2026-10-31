@@ -143,6 +143,9 @@ func TestHealthAndContexts(t *testing.T) {
 	if health.Status != 200 || len(f.calls) != 0 {
 		t.Fatalf("health: %d calls=%d", health.Status, len(f.calls))
 	}
+	if health.Value["migratedFrom"] != "" {
+		t.Fatalf("migratedFrom %v", health.Value["migratedFrom"])
+	}
 	if health.Value["live"] != false || health.Header.Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("unexpected health %v", health.Value)
 	}
