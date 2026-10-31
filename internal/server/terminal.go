@@ -251,6 +251,9 @@ func (b *Backend) planTerminal(ctx context.Context, query map[string]string) (*t
 		return nil
 	}
 	plan := &terminalPlan{mode: "local", remote: query["pod"] != "" || query["node"] != ""}
+	if query["run"] != "" && plan.remote {
+		return nil, bad("A sign-in command cannot run inside a pod or node")
+	}
 	switch {
 	case query["node"] != "":
 		// A short-lived privileged debug pod on the node, entering the host filesystem.
@@ -332,6 +335,20 @@ func (b *Backend) planTerminal(ctx context.Context, query map[string]string) (*t
 	default:
 		scoped := query["context"] != ""
 		command, args := localShell(runtime.GOOS, os.Getenv("SHELL"), scoped, fileExists)
+		if query["run"] != "" {
+			// A sign-in preset replaces the shell: the session ends with the command, and its exit
+			// code tells the UI whether the login worked.
+			if !scoped {
+				return nil, bad("A sign-in command needs a cluster context")
+			}
+			kubeContext, err := validateText(get("context"), "context")
+			if err != nil {
+				return nil, err
+			}
+			if command, args, err = b.signInPlan(ctx, query["run"], kubeContext); err != nil {
+				return nil, err
+			}
+		}
 		plan.command = command
 		plan.args = func(bool) []string { return append([]string{}, args...) }
 		if scoped {

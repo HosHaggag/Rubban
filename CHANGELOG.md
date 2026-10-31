@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13.0: Next features
+
+- **Expired credentials are named, with the fix one click away.** When a cluster's credentials expire (or its `gke-gcloud-auth-plugin`, `kubelogin` or `aws` plugin fails), the tab, the cluster selector and the hotbar get an amber ring and a banner says so. **Sign in again** runs `gcloud auth login`, `az login` or `aws sso login` for that cluster in the terminal dock; when the login finishes the views reconnect by themselves. Settings › Prerequisites lists every cluster's sign-in state.
 ## 0.12.2: Cluster tabs
 
 - **Tabs work like a browser's.** Every tab remembers its cluster, namespace and view, so two clusters can be open side by side and switching between them is one click. The **+** button (or Ctrl+T) opens a cluster in a new tab; Ctrl+W closes a tab, Ctrl+Tab cycles, middle-click closes. Tabs show their cluster's icon and colour, and the cluster name once more than one cluster is open. Last session's tabs come back on the next launch. What a cluster already reported (namespaces, custom resources, API discovery) is kept while another tab is active, so coming back is instant.

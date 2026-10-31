@@ -191,6 +191,17 @@ func (p *Pool) invalidate(e *poolEntry) {
 	}
 }
 
+// InvalidateContext drops the context's connection and stops its proxy; the next Acquire starts a
+// fresh one (and so runs the credential plugin again).
+func (p *Pool) InvalidateContext(kubeContext string) {
+	p.mu.Lock()
+	e := p.entries[kubeContext]
+	p.mu.Unlock()
+	if e != nil {
+		p.invalidate(e)
+	}
+}
+
 func (p *Pool) sweeper(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

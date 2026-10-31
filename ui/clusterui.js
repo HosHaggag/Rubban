@@ -2,6 +2,7 @@
 import { $, state, hooks, el, button, badge, info, toast, task, api, get, post, page, panel, popup, closeMenus } from './kit.js';
 import { clusterInfo, CLUSTER_COLORS, CLUSTER_ENVS } from './clusters.js';
 import { clusterIcon, CLUSTER_ICON_IDS } from './cluster-icons.js';
+import { isExpired, authOf, tooltip } from './credentials.js';
 
 const clusters = () => state.preferences.clusters || {};
 export const infoFor = name => clusterInfo(name, clusters());
@@ -9,7 +10,11 @@ export const labelFor = name => (name ? infoFor(name).label : '');
 export const envFor = name => (name ? infoFor(name).env : '');
 const favorites = () => (Array.isArray(state.preferences.favoriteContexts) ? state.preferences.favoriteContexts.filter(name => typeof name === 'string') : []);
 const savePreferences = async patch => { state.preferences = await api('/api/preferences', { method: 'PUT', body: { ...state.preferences, ...patch } }); return state.preferences; };
-const iconBox = (name, className = 'cluster-badge') => { const meta = infoFor(name); const box = el('span', { class: className, style: `color:${meta.color}`, title: meta.label }); box.append(clusterIcon(meta.icon)); return box; };
+const iconBox = (name, className = 'cluster-badge') => {
+  const meta = infoFor(name); const expired = isExpired(name);
+  const box = el('span', { class: `${className}${expired ? ' auth-expired' : ''}`, style: `color:${meta.color}`, title: expired ? tooltip(meta.label, authOf(name)) : meta.label });
+  box.append(clusterIcon(meta.icon)); return box;
+};
 const envBadge = env => (env ? badge(env, env === 'production' ? 'bad' : env === 'staging' ? 'warn' : 'info') : null);
 
 export async function saveCluster(name, patch) {
@@ -45,7 +50,7 @@ export function renderCluster() {
   if (hotbar) {
     hotbar.replaceChildren(...list.map(item => {
       const available = state.contexts.some(context => context.name === item);
-      const node = el('button', { type: 'button', class: `favorite-context${item === name ? ' selected' : ''}${available ? '' : ' missing'}`, draggable: 'true', 'data-name': item, title: available ? `${labelFor(item)} · ${item}` : `${item} · context is missing from kubeconfig`, 'aria-label': labelFor(item), onclick: () => hooks.selectContext(item) });
+      const node = el('button', { type: 'button', class: `favorite-context${item === name ? ' selected' : ''}${available ? '' : ' missing'}${isExpired(item) ? ' auth-expired' : ''}`, draggable: 'true', 'data-name': item, title: isExpired(item) ? tooltip(labelFor(item), authOf(item)) : available ? `${labelFor(item)} · ${item}` : `${item} · context is missing from kubeconfig`, 'aria-label': labelFor(item), onclick: () => hooks.selectContext(item) });
       node.append(clusterIcon(infoFor(item).icon));
       node.style.color = infoFor(item).color;
       node.addEventListener('dragstart', event => { event.dataTransfer.setData('text/plain', item); event.dataTransfer.effectAllowed = 'move'; });

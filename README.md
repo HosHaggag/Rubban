@@ -184,8 +184,9 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
    - Flux, Gateway API and Custom Resources.
    Ctrl-click (⌘-click on macOS) opens a view in a new tab.
 4. **Tabs work like a browser's.** Each tab remembers its cluster, namespace and view, so two clusters can be open side by side. **+** at the end of the tab bar (or Ctrl+T) opens another cluster in a new tab; the selector at the top left switches the *current* tab's cluster. Last session's tabs come back on the next launch.
-5. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
-6. **Settings** is the gear at the bottom of the sidebar. It holds:
+5. **Expired credentials show up where you look.** A cluster whose credentials expired gets an amber ring on its tab, in the selector and on the hotbar, and a banner with **Sign in again**. It opens the terminal dock running the one command that fixes it (`gcloud auth login`, `az login` or `aws sso login --profile …`, chosen from the cluster's kubeconfig); when the login finishes, the views reconnect.
+6. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
+7. **Settings** is the gear at the bottom of the sidebar. It holds:
    - the Prometheus service used for each cluster (or none);
    - the node shell image;
    - the keyboard shortcuts.
@@ -329,6 +330,7 @@ Rubban never writes to your own kubeconfig; imported kubeconfigs are separate co
 | Symptom | What to do |
 |---|---|
 | No contexts in the cluster selector | Run `kubectl config get-contexts` in a terminal. On macOS, if Terminal shows contexts but Rubban does not, check where `KUBECONFIG` is set (see [3.3](#33-how-rubban-finds-your-tools-on-macos)) and restart Rubban. |
+| A banner says "Credentials for … expired" | Choose **Sign in again** and finish the login in the browser window it opens. Rubban needs `gcloud`, `az` or `aws` on your PATH for that; without it, sign in from your own terminal and press **Retry**. |
 | `executable gke-gcloud-auth-plugin not found` | Run `gcloud components install gke-gcloud-auth-plugin`, open a new terminal, and check that `kubectl get ns` works. Then restart Rubban. |
 | `kubectl is not installed or not on PATH` | Install kubectl ([2.1](#21-install-the-command-line-tools-once) or [3.1](#31-install-the-command-line-tools-once)), or bundle it in the build ([5.4](#54-bundle-kubectl-and-helm-optional)). |
 | CPU and memory show `—` everywhere | metrics-server is missing or not ready. `kubectl top nodes` shows the same problem. |

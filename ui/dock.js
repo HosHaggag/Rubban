@@ -172,7 +172,7 @@ export async function openTerminal(target = {}) {
     if (!sessions.includes(session)) return session;
     terminal = new Terminal({ cursorBlink: false, fontSize: 12, scrollback: 10000, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace", theme: xtermTheme() }); terminals.add(terminal);
     fit = new FitAddon(); terminal.loadAddon(fit); terminal.open(host); fit.fit();
-    const query = target.node ? { context: target.context, node: target.node, image: target.image } : target.pod ? { context: target.context, namespace: target.namespace, pod: target.pod, container: target.container, attach: target.attach ? 'true' : undefined } : target.context ? { context: target.context, namespace: target.namespace } : {};
+    const query = target.run ? { context: target.context, run: target.run } : target.node ? { context: target.context, node: target.node, image: target.image } : target.pod ? { context: target.context, namespace: target.namespace, pod: target.pod, container: target.container, attach: target.attach ? 'true' : undefined } : target.context ? { context: target.context, namespace: target.namespace } : {};
     const ws = new WebSocket(socketURL('/api/terminal', query)); socket = ws;
     ws.addEventListener('open', () => { if (socket !== ws) return; setStatus(session, target.node ? 'Starting node shell pod…' : 'Connected', 'good'); ws.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows })); terminal.focus(); });
     ws.addEventListener('message', event => {
@@ -180,7 +180,7 @@ export async function openTerminal(target = {}) {
       let data; try { data = JSON.parse(event.data); } catch { terminal.write(event.data); return; }
       if (data.type === 'data') { terminal.write(data.data); if (session.status === 'good' && target.node && session.statusText !== 'Connected') setStatus(session, 'Connected', 'good'); }
       else if (data.type === 'error' || data.type === 'status') { const text = data.message || data.error || data.data || data.status || 'Terminal status changed'; setStatus(session, text, data.type === 'error' ? 'bad' : 'good'); terminal.writeln(`\r\n${text}`); }
-      else if (data.type === 'exit') setStatus(session, `Exited${data.code !== undefined ? ` (${data.code})` : ''}`, 'done');
+      else if (data.type === 'exit') { setStatus(session, `Exited${data.code !== undefined ? ` (${data.code})` : ''}`, 'done'); target.onExit?.(data.code); }
     });
     terminal.onData(data => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', data })); });
     terminal.onResize(size => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', ...size })); });

@@ -78,6 +78,7 @@ type Backend struct {
 	kubecfgs *kubeconfigStore
 	term     terminalState
 	live     *live.Live // nil when the live layer is off
+	auth     authBook
 
 	port     atomic.Int64
 	closed   atomic.Bool
@@ -377,13 +378,36 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if ctx.Err() != nil {
 			return
 		}
-		writeJSON(w, map[string]string{"error": shortError(err)}, statusOf(err))
+		err = b.tagCredentials(err, requestContext(req))
+		writeJSON(w, errorBody(err), statusOf(err))
 		return
 	}
 	if ctx.Err() != nil {
 		return
 	}
 	writeJSON(w, result, status)
+}
+
+// requestContext is the kubeconfig context a request is about, when it names one.
+func requestContext(q *request) string {
+	if v := q.query["context"]; v != "" {
+		return v
+	}
+	v, _ := q.body["context"].(string)
+	return v
+}
+
+// errorBody is the JSON answer for a failed request; credential failures carry their code.
+func errorBody(err error) map[string]string {
+	body := map[string]string{"error": shortError(err)}
+	var p *Problem
+	if errors.As(err, &p) && p.Code != "" {
+		body["code"] = p.Code
+		if p.Plugin != "" {
+			body["plugin"] = p.Plugin
+		}
+	}
+	return body
 }
 
 func readJSONBody(r *http.Request) (map[string]any, error) {

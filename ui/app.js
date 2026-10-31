@@ -17,6 +17,7 @@ import { showChart, installDialog, showRelease, releaseMenu, repositoriesPanel }
 import { consumption, resetPrometheusProvider } from './detail-common.js';
 import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErrors } from './argocd.js';
 import { rabbitmqPage } from './rabbitmq.js';
+import * as credentials from './credentials.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -259,9 +260,10 @@ function renderTabs() {
   const clustersOpen = new Set(state.tabs.map(tab => tab.context)).size > 1;
   $('#tabbar').replaceChildren(...state.tabs.map(tab => {
     const meta = tab.context ? infoFor(tab.context) : null;
-    const mark = meta ? el('span', { class: 'tab-cluster', style: `color:${meta.color}` }, clusterIcon(meta.icon)) : null;
+    const expired = tab.context && credentials.isExpired(tab.context);
+    const mark = meta ? el('span', { class: `tab-cluster${expired ? ' auth-expired' : ''}`, style: `color:${meta.color}` }, clusterIcon(meta.icon)) : null;
     const node = button([mark, icon(tab.icon || allNav().find(item => sameView(item, tab))?.icon || allNav().find(item => sameView(item, tab))?.trail?.[0]?.icon || 'overview', 'ui-svg tab-svg'), el('span', { class: 'tab-title', text: clustersOpen && meta ? `${meta.label} · ${tab.title}` : tab.title }), el('span', { class: 'tab-close', title: `Close tab (${MOD}+W)`, role: 'button', 'aria-label': `Close ${tab.title}`, onclick: event => { event.stopPropagation(); closeTab(tab.id); }, text: '×' })], () => activateTab(tab.id), `tab${state.active === tab.id ? ' active' : ''}`);
-    node.title = meta ? `${meta.label} · ${tab.context}${tab.namespace !== '*' ? ` · ${tab.namespace}` : ''}` : 'No cluster';
+    node.title = meta ? `${meta.label} · ${tab.context}${tab.namespace !== '*' ? ` · ${tab.namespace}` : ''}${expired ? ` — credentials expired${credentials.authOf(tab.context).message ? `: ${credentials.authOf(tab.context).message}` : ''}` : ''}` : 'No cluster';
     node.addEventListener('auxclick', event => { if (event.button === 1) { event.preventDefault(); closeTab(tab.id); } });
     node.setAttribute('role', 'tab'); node.setAttribute('aria-selected', state.active === tab.id ? 'true' : 'false'); return node;
   }), el('button', { type: 'button', class: 'tab-new', title: `Open a cluster in a new tab (${MOD}+T)`, 'aria-label': 'Open a cluster in a new tab', onclick: () => openSwitcher({ newTab: true }), text: '+' }));
@@ -271,6 +273,40 @@ function renderTabs() {
   let railMatched = false;
   document.querySelectorAll('.rail-button[data-section]').forEach(node => { const active = node.dataset.section === tab.section; node.classList.toggle('active', active); railMatched ||= active; });
   $('#workspace-button').classList.toggle('active', !railMatched);
+  renderAuthBanner();
+}
+// ---- Credential health --------------------------------------------------------------------------
+// A cluster whose credentials expired is marked on its tab, in the switcher and on the hotbar, and the
+// page shows a banner offering the one command that fixes it, run in the terminal dock.
+function authChanged() { renderTabs(); renderCluster(); }
+hooks.authProblem = (context, problem) => { if (credentials.mark(context, { message: problem?.error || problem?.message || '', plugin: problem?.plugin || '' })) authChanged(); };
+function renderAuthBanner() {
+  const node = $('#auth-banner');
+  const context = activeTab().context;
+  const banner = credentials.bannerFor(context);
+  if (!banner) { node.classList.add('hidden'); node.replaceChildren(); return; }
+  const parts = credentials.bannerParts(labelFor(context), banner.entry);
+  node.classList.remove('hidden');
+  node.replaceChildren(
+    el('span', { class: 'auth-banner-text' }, parts.before, el('strong', { text: parts.label }), parts.after, banner.canSignIn ? null : el('small', { text: ` ${banner.remedyLabel}` })),
+    el('span', { class: 'spacer' }),
+    banner.canSignIn ? button('Sign in again', task(() => signIn(context)), 'compact primary') : button('Retry', task(() => reconnect(context)), 'compact'),
+    button('Dismiss', () => { credentials.dismiss(context); renderAuthBanner(); }, 'compact quiet'));
+}
+// After a sign-in the server forgets the failure and drops its proxy, then the views reconnect.
+async function reconnect(context) {
+  await post('/api/contexts/recheck', { context });
+  credentials.clear(context);
+  if (state.context === context) await selectContext(context, { namespace: state.namespace, fromTab: true });
+  else authChanged();
+}
+async function signIn(context) {
+  const remedy = credentials.authOf(context).remedy;
+  if (!remedy?.preset) { await reconnect(context); return; }
+  await openTerminal({ context, run: remedy.preset, title: `Sign in · ${labelFor(context)}`, onExit: code => {
+    if (code === 0) reconnect(context).catch(error => toast(error.message, true));
+    else $('#status-message').textContent = 'Sign-in failed; try again';
+  } });
 }
 // ---- Live data: WebSocket subscriptions to shared Kubernetes watches -------------------------
 const LIVE_LABELS = { connecting: 'Connecting', live: 'Live', reconnecting: 'Reconnecting', polling: 'Polling', snapshot: 'Snapshot', error: 'Error' };
@@ -338,11 +374,12 @@ function openFeed(key, { context, namespace, resource }) {
         const previous = feed.items; feed.items = staging || new Map(); staging = null; attempt = 0;
         if (feed.synced) { for (const [id, item] of feed.items) if (liveStamp(previous.get(id) || {}) !== liveStamp(item)) changed.add(id); for (const id of previous.keys()) if (!feed.items.has(id)) deleted.add(id); }
         feed.synced = true; emit();
+        if (credentials.clear(context)) authChanged();
       } else if (message.type === 'changes') {
         for (const item of message.upserts || []) { const id = liveKey(item); feed.items.set(id, item); changed.add(id); deleted.delete(id); }
         for (const id of message.deletes || []) { feed.items.delete(id); deleted.add(id); changed.delete(id); }
         schedule();
-      } else if (message.type === 'error') { setStatus({ state: 'error', message: message.error }); fail(Object.assign(new Error(message.error), { status: message.status })); }
+      } else if (message.type === 'error') { setStatus({ state: 'error', message: message.error }); fail(Object.assign(new Error(message.error), { status: message.status, code: message.code, plugin: message.plugin })); if (message.code === 'credentials') hooks.authProblem(context, message); }
       else if (message.type === 'unavailable') { socket = null; ws.close(); snapshot(message.message); }
     };
     ws.onclose = () => {
@@ -464,7 +501,7 @@ async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
 function welcome() {
   const root = el('div', { class: 'welcome' }, el('span', { class: 'welcome-tag' }, '◈  YOUR INDEPENDENT WORKSPACE'), el('h1', { text: 'Your clusters. A clearer perspective.' }), el('p', { text: 'Explore Kubernetes, troubleshoot workloads, and manage your infrastructure from one local desktop workspace. Choose a kubeconfig context to get started.' }));
   const choices = el('div', { class: 'context-list' });
-  for (const context of state.contexts) { const meta = infoFor(context.name); const mark = el('span', { style: `color:${meta.color}` }); mark.append(clusterIcon(meta.icon)); choices.append(button([mark, el('div', {}, el('strong', { text: meta.label }), el('small', { text: meta.label === context.name ? context.cluster || 'Kubeconfig context' : context.name })), el('span', { class: 'spacer' }), meta.env ? badge(meta.env, meta.env === 'production' ? 'bad' : meta.env === 'staging' ? 'warn' : 'info') : null, el('span', { text: '→' })], () => selectContext(context.name), 'context-choice')); }
+  for (const context of state.contexts) { const meta = infoFor(context.name); const mark = el('span', { style: `color:${meta.color}` }); mark.append(clusterIcon(meta.icon)); choices.append(button([mark, el('div', {}, el('strong', { text: meta.label }), el('small', { text: meta.label === context.name ? context.cluster || 'Kubeconfig context' : context.name })), el('span', { class: 'spacer' }), credentials.isExpired(context.name) ? badge('credentials expired', 'warn') : null, meta.env ? badge(meta.env, meta.env === 'production' ? 'bad' : meta.env === 'staging' ? 'warn' : 'info') : null, el('span', { text: '→' })], () => selectContext(context.name), 'context-choice')); }
   if (state.contextsError) choices.append(info(`Could not read kubeconfig contexts: ${state.contextsError}`, 'error'), button('Reload contexts', task(reloadContexts), 'compact'));
   else if (!state.contexts.length) choices.append(info('No kubeconfig contexts were found. Paste or import a kubeconfig below, or configure one with kubectl.'));
   root.append(el('div', { class: 'welcome-grid' }, panel('Choose a cluster', choices, badge(`${state.contexts.length} contexts`)), panel('Built for the work you do', [el('div', { class: 'feature-row' }, el('span', { text: '▦' }), el('div', {}, el('strong', { text: 'See the whole cluster' }), 'Workloads, networking, storage, access, and custom resources.')), el('div', { class: 'feature-row' }, el('span', { text: '›_' }), el('div', {}, el('strong', { text: 'Troubleshoot in context' }), 'Live logs, interactive terminals, metrics, and port forwarding.')), el('div', { class: 'feature-row' }, el('span', { text: '⑂' }), el('div', {}, el('strong', { text: 'Operate on your terms' }), 'Helm, Argo CD, and your own connected services.'))])));
@@ -1277,6 +1314,14 @@ async function settingsPage() {
   root.append(el('div', { class: 'section-label' }, el('h2', { text: 'Local environment' })));
   const environment = el('div'); for (const [name, value] of Object.entries(state.health?.tools || {})) environment.append(el('div', { class: 'key-value' }, el('span', { text: name }), el('span', {}, badge(toolAvailable(value) ? 'Available' : 'Not found', toolAvailable(value) ? 'good' : 'warn'), el('span', { class: 'mono', style: 'margin-left:10px', text: typeof value === 'object' ? value?.path || value?.version || '' : typeof value === 'string' ? value : '' }))));
   environment.append(el('div', { class: 'key-value' }, el('span', { text: 'Platform' }), el('span', { text: state.health?.platform || 'Unknown' })), el('div', { class: 'key-value' }, el('span', { text: 'App version' }), el('span', { text: state.health?.version || 'Development build' })));
+  if (state.contexts.length) {
+    const sign = el('div');
+    for (const context of state.contexts) {
+      const entry = credentials.authOf(context.name); const expired = entry.status === 'expired';
+      sign.append(el('div', { class: 'key-value' }, el('span', { text: labelFor(context.name), title: context.name }), el('span', {}, badge(expired ? 'Credentials expired' : entry.status === 'ok' ? 'Signed in' : 'Not checked yet', expired ? 'warn' : entry.status === 'ok' ? 'good' : ''), el('span', { class: 'muted', style: 'margin-left:10px', text: expired ? entry.remedy?.label || '' : '' }))));
+    }
+    environment.append(el('div', { class: 'section-label' }, el('h3', { text: 'Cluster sign-in' })), sign);
+  }
   root.append(panel('Prerequisites', environment), info('Rubban uses local kubeconfig contexts and installed command line tools. Cluster connection, metrics, Argo CD and cost availability depend on your infrastructure.'));
   root.append(panel('Keyboard shortcuts', dl([[`${MOD}+K`, 'Command palette'], [`${MOD}+Shift+K`, 'Switch cluster'], [`${MOD}+1`, 'Cluster overview'], [`${MOD}+\``, 'Show or hide the terminal dock'], ['/', 'Filter the sidebar'], ['Esc', 'Close the details panel'], ['Right-click a row', 'Row actions']])));
   return root;
@@ -1307,7 +1352,8 @@ async function reloadContexts() {
   let response;
   try { response = await get('/api/contexts'); state.contextsError = ''; } catch (error) { state.contextsError = error.message; if (!state.context) render(); throw error; }
   state.contexts = response.contexts || [];
-  renderFavorites();
+  credentials.load(state.contexts);
+  renderFavorites(); renderAuthBanner();
   if (!state.context) render();
 }
 // ---- Onboarding tour --------------------------------------------------------------------------

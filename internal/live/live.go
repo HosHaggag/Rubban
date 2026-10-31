@@ -374,6 +374,15 @@ func selectors2map(pairs []kv) map[string]string {
 	return m
 }
 
+// Invalidate discards a context's proxy so the next request starts a new one, for example after the
+// user signed in again.
+func (l *Live) Invalidate(kubeContext string) {
+	if l == nil {
+		return
+	}
+	l.pool.InvalidateContext(kubeContext)
+}
+
 // Close stops every watch and proxy.
 func (l *Live) Close() {
 	if l == nil {

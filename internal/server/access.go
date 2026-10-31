@@ -45,7 +45,14 @@ func liveProblem(err error) error {
 		if status == 0 {
 			status = 502
 		}
-		return problem(le.Message, status)
+		p := problem(le.Message, status)
+		if failure, ok := classifyAuthFailure(le.Message); ok || le.KubeStatus == 401 {
+			if !ok {
+				failure = authFailure{Kind: "unauthorized"}
+			}
+			p.Code, p.Plugin = "credentials", failure.Plugin
+		}
+		return p
 	}
 	return err
 }

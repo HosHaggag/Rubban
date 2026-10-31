@@ -147,7 +147,8 @@ func TestHealthAndContexts(t *testing.T) {
 		t.Fatalf("unexpected health %v", health.Value)
 	}
 	contexts := f.get("/api/contexts")
-	want := []any{map[string]any{"source": "default", "name": "development", "cluster": "dev-cluster", "user": "dev-user", "namespace": "apps", "current": true}}
+	want := []any{map[string]any{"source": "default", "name": "development", "cluster": "dev-cluster", "user": "dev-user", "namespace": "apps", "current": true,
+		"auth": map[string]any{"status": "unknown", "message": "", "plugin": "", "remedy": map[string]any{"preset": "", "label": genericRemedy.Label}}}}
 	if contexts.Value["current"] != "development" || !reflect.DeepEqual(contexts.Value["contexts"], want) {
 		t.Fatalf("contexts: %v", contexts.Value)
 	}

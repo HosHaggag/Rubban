@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sync"
 
@@ -131,7 +132,11 @@ func (s *watchSession) writer() {
 }
 
 // watchListener adapts a live watch to the socket protocol.
-type watchListener struct{ s *watchSession }
+type watchListener struct {
+	s       *watchSession
+	b       *Backend
+	context string
+}
 
 func (l watchListener) Status(st live.Status) {
 	m := obj{"type": "status", "state": st.State, "message": st.Message}
@@ -154,6 +159,7 @@ func chunked(items []live.Object) [][]live.Object {
 }
 
 func (l watchListener) Reset(items []live.Object, resourceVersion string) {
+	l.b.clearAuth(l.context)
 	l.s.send(obj{"type": "reset"})
 	for _, part := range chunked(items) {
 		l.s.send(obj{"type": "items", "items": part})
@@ -178,15 +184,25 @@ func (l watchListener) Changes(upserts []live.Object, deletes []string) {
 	}
 }
 
-func (l watchListener) Fatal(err error) { l.s.end(watchError(err, 502)) }
+func (l watchListener) Fatal(err error) { l.s.end(l.b.watchError(err, 502, l.context)) }
 
-func watchError(err error, fallbackStatus int) obj {
-	err = liveProblem(err)
+// watchError is the final message of a failed watch; credential failures carry code and plugin and
+// mark the context as expired.
+func (b *Backend) watchError(err error, fallbackStatus int, kubeContext string) obj {
+	err = b.tagCredentials(liveProblem(err), kubeContext)
 	status := statusOf(err)
 	if status == 500 {
 		status = fallbackStatus
 	}
-	return obj{"type": "error", "error": shortError(err), "status": status}
+	msg := obj{"type": "error", "error": shortError(err), "status": status}
+	var p *Problem
+	if errors.As(err, &p) && p.Code != "" {
+		msg["code"] = p.Code
+		if p.Plugin != "" {
+			msg["plugin"] = p.Plugin
+		}
+	}
+	return msg
 }
 
 // serveWatch streams a resource: {type:'status'|'reset'|'items'|'synced'|'changes'|'error'|'unavailable'}.
@@ -223,7 +239,7 @@ func (b *Backend) serveWatch(w http.ResponseWriter, r *http.Request) {
 		}
 		unsubscribe = stop
 	}); err != nil {
-		s.end(watchError(err, 400))
+		s.end(b.watchError(err, 400, r.URL.Query().Get("context")))
 	}
 	if b.live != nil {
 		go func() {
@@ -277,10 +293,10 @@ func (b *Backend) startWatch(ctx context.Context, s *watchSession, r *http.Reque
 		}
 	}
 	go func() {
-		stop, err := b.live.Watch(ctx, kubeContext, resource, namespace, watchListener{s}, opts)
+		stop, err := b.live.Watch(ctx, kubeContext, resource, namespace, watchListener{s: s, b: b, context: kubeContext}, opts)
 		if err != nil {
 			if ctx.Err() == nil {
-				s.end(watchError(err, 502))
+				s.end(b.watchError(err, 502, kubeContext))
 			}
 			return
 		}

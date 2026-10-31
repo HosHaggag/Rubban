@@ -172,6 +172,7 @@ func (b *Backend) routeContexts(q *request) (any, int, error) {
 		return nil, 0, err
 	}
 	current := strOf(doc["current-context"])
+	remedies := remediesOf(doc)
 	contexts := []any{}
 	for _, it := range listOf(doc["contexts"]) {
 		item := objOf(it)
@@ -181,7 +182,7 @@ func (b *Backend) routeContexts(q *request) (any, int, error) {
 		if ns == "" {
 			ns = "default"
 		}
-		contexts = append(contexts, obj{"source": b.kubecfgs.sourceOf(name), "name": name, "cluster": strOf(c["cluster"]), "user": strOf(c["user"]), "namespace": ns, "current": name == current})
+		contexts = append(contexts, obj{"source": b.kubecfgs.sourceOf(name), "name": name, "cluster": strOf(c["cluster"]), "user": strOf(c["user"]), "namespace": ns, "current": name == current, "auth": b.authView(name, remedies[name])})
 	}
 	return obj{"current": current, "contexts": contexts}, 200, nil
 }

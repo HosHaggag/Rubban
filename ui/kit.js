@@ -40,7 +40,11 @@ export async function api(path, options = {}) {
   const pageRead = (!options.method || options.method === 'GET') && !['/api/health', '/api/contexts', '/api/preferences', '/api/namespaces', '/api/discovery'].includes(path);
   const response = await fetch(url, { method: options.method || 'GET', headers: { 'X-Rubban-Token': TOKEN, ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}), signal: options.signal || (pageRead ? state.pageAbort?.signal : undefined) });
   const result = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-  if (!response.ok) throw Object.assign(new Error(result.error || `Request failed (${response.status})`), { status: response.status });
+  if (!response.ok) {
+    const error = Object.assign(new Error(result.error || `Request failed (${response.status})`), { status: response.status, code: result.code, plugin: result.plugin });
+    if (result.code === 'credentials') hooks.authProblem?.(options.context || options.query?.context || options.body?.context || state.context, error);
+    throw error;
+  }
   return result;
 }
 export const get = (path, query = {}, options = {}) => api(path, { query, ...options });

@@ -213,7 +213,12 @@ func (b *Backend) run(ctx context.Context, command string, args []string, opts R
 		if detail != "" {
 			msg += ": " + detail
 		}
-		return res, &runError{Problem: problem(msg, 502), Result: res}
+		p := problem(msg, 502)
+		if failure, ok := classifyAuthFailure(detail); ok {
+			p.Code, p.Plugin = "credentials", failure.Plugin
+			b.noteAuthFailure(contextOfArgs(args), authFailure{Kind: failure.Kind, Plugin: failure.Plugin, Message: firstLine(detail)})
+		}
+		return res, &runError{Problem: p, Result: res}
 	}
 	return res, nil
 }

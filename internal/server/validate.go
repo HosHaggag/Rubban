@@ -17,6 +17,9 @@ import (
 type Problem struct {
 	Status int
 	Msg    string
+	// Code names a failure the UI can act on ("credentials"); Plugin is the exec plugin behind it.
+	Code   string
+	Plugin string
 }
 
 func (p *Problem) Error() string { return p.Msg }
