@@ -67,14 +67,13 @@ In PowerShell:
 ```powershell
 winget install -e --id Kubernetes.kubectl
 winget install -e --id Helm.Helm            # optional, for the Helm pages
-winget install -e --id Google.CloudSDK      # GKE clusters
-gcloud components install gke-gcloud-auth-plugin
-gcloud container clusters get-credentials <cluster> --region <region> --project <project>
 ```
+
+Then install your cloud provider's CLI and credential plugin, and get your cluster's kubeconfig the way your provider documents it. Rubban works with any cluster kubectl can reach: GKE, EKS, AKS, on-premises or local.
 
 Open a **new** PowerShell window and check that `kubectl get ns` works.
 
-> **Using WSL?** Rubban for Windows reads the *Windows* kubeconfig (`%USERPROFILE%\.kube\config`). A kubeconfig made inside WSL points at Linux plugin binaries that Windows cannot run, so run `gcloud container clusters get-credentials …` once in Windows as well.
+> **Using WSL?** Rubban for Windows reads the *Windows* kubeconfig (`%USERPROFILE%\.kube\config`). A kubeconfig made inside WSL points at Linux plugin binaries that Windows cannot run, so get the kubeconfig once in Windows as well, with your provider's Windows CLI.
 
 ### 2.2 Install Rubban
 
@@ -111,10 +110,9 @@ With [Homebrew](https://brew.sh):
 ```bash
 brew install kubectl
 brew install helm                        # optional, for the Helm pages
-brew install --cask gcloud-cli           # GKE clusters (older Homebrew: google-cloud-sdk)
-gcloud components install gke-gcloud-auth-plugin
-gcloud container clusters get-credentials <cluster> --region <region> --project <project>
 ```
+
+Then install your cloud provider's CLI and credential plugin, and get your cluster's kubeconfig the way your provider documents it. Rubban works with any cluster kubectl can reach: GKE, EKS, AKS, on-premises or local.
 
 Open a **new** Terminal window and check that `kubectl get ns` works.
 
@@ -152,7 +150,7 @@ Apps started from Finder, the Dock or Spotlight do not see the PATH set in `~/.z
 - `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`;
 - the `CLOUDSDK_*`, `AWS_*` and `AZURE_CONFIG_DIR` cloud settings.
 
-It also adds `/opt/homebrew/bin`, `/usr/local/bin` and `~/google-cloud-sdk/bin`. If you change these settings in your shell, quit and reopen Rubban (⌘Q).
+It also adds the Homebrew folders (`/opt/homebrew/bin`, `/usr/local/bin`) and the default install folders of cloud CLIs that do not put themselves on `PATH`. If you change these settings in your shell, quit and reopen Rubban (⌘Q).
 
 To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with `launchctl setenv`).
 
@@ -342,7 +340,7 @@ Rubban never writes to your own kubeconfig; imported kubeconfigs are separate co
 | No contexts in the cluster selector | Run `kubectl config get-contexts` in a terminal. On macOS, if Terminal shows contexts but Rubban does not, check where `KUBECONFIG` is set (see [3.3](#33-how-rubban-finds-your-tools-on-macos)) and restart Rubban. |
 | A banner says "Credentials for … expired" | Choose **Sign in again** and finish the login in the browser window it opens. Rubban needs `gcloud`, `az` or `aws` on your PATH for that; without it, sign in from your own terminal and press **Retry**. |
 | A port forward shows `error: local port … is in use` | Another program holds that port after Rubban restarted. Stop the forward and create it again on a free port, or close the other program and press **Restart**. |
-| `executable gke-gcloud-auth-plugin not found` | Run `gcloud components install gke-gcloud-auth-plugin`, open a new terminal, and check that `kubectl get ns` works. Then restart Rubban. |
+| `executable … not found` for a credential plugin (`gke-gcloud-auth-plugin`, `kubelogin`, `aws`, …) | Your kubeconfig names a plugin that is not installed or not on `PATH`. Install it with your cloud provider's CLI, open a new terminal, and check that `kubectl get ns` works. Then restart Rubban. |
 | `kubectl is not installed or not on PATH` | Install kubectl ([2.1](#21-install-the-command-line-tools-once) or [3.1](#31-install-the-command-line-tools-once)), or bundle it in the build ([5.4](#54-bundle-kubectl-and-helm-optional)). |
 | CPU and memory show `—` everywhere | metrics-server is missing or not ready. `kubectl top nodes` shows the same problem. |
 | One node shows **no data** | metrics-server could not scrape that node, and Rubban could not read the kubelet either. Hover the cell for the reason. Usually you lack `nodes/proxy` permission, or that node's kubelet is unhealthy. Totals then cover the nodes that reported. |
