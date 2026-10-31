@@ -6,7 +6,9 @@ param(
   [string]$Source = $PSScriptRoot,
   [string]$Destination = (Join-Path $env:USERPROFILE 'Rubban\Rubban-Windows'),
   [switch]$DesktopShortcut,
-  [switch]$NoStart
+  [switch]$NoStart,
+  # An in-place update (the in-app updater) keeps the shortcuts the user already has.
+  [switch]$NoShortcuts
 )
 $ErrorActionPreference = 'Stop'
 $Source = (Resolve-Path $Source).Path
@@ -49,6 +51,7 @@ $desktop = [Environment]::GetFolderPath('Desktop')
 $shell = New-Object -ComObject WScript.Shell
 $targets = @(Join-Path $programs 'Rubban.lnk')
 if ($DesktopShortcut) { $targets += Join-Path $desktop 'Rubban.lnk' }
+if ($NoShortcuts) { $targets = @() }
 foreach ($link in $targets) {
   $shortcut = $shell.CreateShortcut($link)
   $shortcut.TargetPath = $exe

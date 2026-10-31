@@ -60,7 +60,9 @@ function Wait-Exit([System.Diagnostics.Process]$Process, [int]$Seconds, [string]
 function Invoke-Smoke([string]$Exe, [hashtable]$Env, [string]$OutDir) {
   for ($attempt = 1; $attempt -le 2; $attempt++) {
     Remove-Item $OutDir -Recurse -Force -ErrorAction SilentlyContinue
-    $vars = @{ RUBBAN_DISABLE_UPDATES = '1'; RUBBAN_SMOKE_DIR = $OutDir } + $Env
+    # USERPROFILE too: an installed build looks for old settings under the home folder, and a test
+    # run must never copy the user's real settings or kubeconfigs into its scratch folder.
+    $vars = @{ RUBBAN_DISABLE_UPDATES = '1'; RUBBAN_SMOKE_DIR = $OutDir; USERPROFILE = $scratchHome } + $Env
     $code = With-ScratchEnv $vars { $p = Start-Process -FilePath $Exe -ArgumentList '--smoke-test' -PassThru; Wait-Exit $p 90 'Rubban --smoke-test' }
     $file = Join-Path $OutDir 'desktop-smoke.json'
     $report = if (Test-Path $file) { Get-Content $file -Raw | ConvertFrom-Json } else { $null }
@@ -103,6 +105,15 @@ Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Work, (Join-Path $Work 'out') | Out-Null
 $out = Join-Path $Work 'out'
 $scratchLocal = Join-Path $Work 'local'
+$scratchHome = Join-Path $Work 'home'
+New-Item -ItemType Directory -Force -Path $scratchHome | Out-Null
+# The Start menu folder comes from the shell, not the environment, so the user's own Rubban shortcut
+# is saved here and put back at the end whatever happens in between.
+$startMenuBackup = Join-Path $Work 'startmenu-Rubban.lnk'
+$startMenuExisted = Test-Path $startMenuLink
+$shortcutTarget = { if (Test-Path $startMenuLink) { (New-Object -ComObject WScript.Shell).CreateShortcut($startMenuLink).TargetPath } else { '' } }
+$startMenuTarget = & $shortcutTarget
+if ($startMenuExisted) { Copy-Item $startMenuLink $startMenuBackup }
 $app = Join-Path $Work 'app'
 $realInstallExisted = Test-Path $realInstall
 
@@ -124,11 +135,14 @@ try {
     Assert (Test-Path $portableExe) 'Rubban.exe is gone after the update'
     Assert ((Get-Content (Join-Path $install 'VERSION') -Raw).Trim() -eq $version) 'VERSION changed after the update'
     Assert (-not (Test-Path (Join-Path $dir 'update.zip'))) 'the helper did not remove the downloaded zip'
+    $now = & $shortcutTarget
+    Assert ($now -eq $startMenuTarget) "the update changed the Start menu shortcut (now '$now', was '$startMenuTarget')"
   }
 
   if ($SkipInstaller) { Write-Host 'SKIP  installer steps (-SkipInstaller)' }
   else {
     Step 'Installer compiles' {
+      if (Test-Path $setup) { Write-Host "      using the installer already built: $setup" }
       if (-not (Test-Path $setup)) {
         if (Get-Command go -ErrorAction SilentlyContinue) {
           With-ScratchEnv @{ RUBBAN_RELEASE_DIR = $Release } { Push-Location $repo; try { go run ./cmd/buildtool installer | Out-Host; if ($LASTEXITCODE -ne 0) { throw "buildtool installer exited with $LASTEXITCODE" } } finally { Pop-Location } }
@@ -206,6 +220,8 @@ try {
 } catch {
   # Reported in the summary; the remaining steps depend on this one.
 } finally {
+  if ($startMenuExisted) { Copy-Item $startMenuBackup $startMenuLink -Force }
+  elseif (Test-Path $startMenuLink) { Remove-Item $startMenuLink -Force }
   if ($installed) {
     Write-Host 'Cleaning up the scratch install...'
     $unins = Get-ChildItem $app -Filter 'unins*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
