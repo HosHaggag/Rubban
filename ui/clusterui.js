@@ -160,7 +160,9 @@ export async function clustersPage() {
       const pin = el('input', { type: 'checkbox', checked: pinned.includes(context.name), 'aria-label': `Pin ${context.name}`, onchange: task(async () => { await toggleFavoriteName(context.name); draw(); }) });
       const imported = imports.find(entry => entry.id === context.source);
       const remove = imported ? button('Remove import', task(async () => { await api(`/api/kubeconfigs/${imported.id}`, { method: 'DELETE' }); if (imported.contexts.includes(state.context)) await hooks.selectContext(''); await hooks.reloadContexts(); toast('Import removed.'); hooks.openView('clusters'); }), 'compact danger') : null;
-      return el('tr', {}, el('td', {}, pick), el('td', {}, label, el('small', { class: 'muted', text: context.name })), el('td', {}, colors), el('td', {}, env), el('td', {}, pin), el('td', {}, imported ? badge(`imported · ${imported.name}`) : badge('kubeconfig')), el('td', {}, remove));
+      const access = button('Access', () => hooks.showAccess(context.name), 'compact quiet');
+      access.title = 'What can I do in this cluster?';
+      return el('tr', {}, el('td', {}, pick), el('td', {}, label, el('small', { class: 'muted', text: context.name })), el('td', {}, colors), el('td', {}, env), el('td', {}, pin), el('td', {}, imported ? badge(`imported · ${imported.name}`) : badge('kubeconfig')), el('td', {}, access, remove));
     });
     body.replaceChildren(...[el('table', { class: 'cluster-table' }, el('thead', {}, el('tr', {}, ['Icon', 'Label', 'Colour', 'Environment', 'Pinned', 'Source', ''].map(title => el('th', { text: title })))), el('tbody', {}, rows)), state.contexts.length ? null : info('No clusters found yet. Import a kubeconfig below.')].filter(Boolean));
   };

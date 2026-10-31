@@ -66,19 +66,20 @@ type Connection struct {
 
 // Backend serves the API.
 type Backend struct {
-	opts     Options
-	dataDir  string
-	token    string
-	version  string
-	tools    map[string]ToolInfo
-	toolPath map[string]string
-	runner   CommandRunner
-	procs    processes
-	logger   *logging.Logger
-	kubecfgs *kubeconfigStore
-	term     terminalState
-	live     *live.Live // nil when the live layer is off
-	auth     authBook
+	opts       Options
+	dataDir    string
+	token      string
+	version    string
+	tools      map[string]ToolInfo
+	toolPath   map[string]string
+	runner     CommandRunner
+	procs      processes
+	logger     *logging.Logger
+	kubecfgs   *kubeconfigStore
+	term       terminalState
+	live       *live.Live // nil when the live layer is off
+	auth       authBook
+	accessMemo accessCache
 
 	port     atomic.Int64
 	closed   atomic.Bool

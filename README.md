@@ -187,6 +187,7 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 5. **Expired credentials show up where you look.** A cluster whose credentials expired gets an amber ring on its tab, in the selector and on the hotbar, and a banner with **Sign in again**. It opens the terminal dock running the one command that fixes it (`gcloud auth login`, `az login` or `aws sso login --profile …`, chosen from the cluster's kubeconfig); when the login finishes, the views reconnect.
 6. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
 7. **Settings** is the gear at the bottom of the sidebar. It holds:
+   - what your identity may do in the current cluster (**Access**);
    - the Prometheus service used for each cluster (or none);
    - the node shell image;
    - the keyboard shortcuts.
@@ -298,6 +299,8 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Reveal a Secret, RabbitMQ initial login | `secrets`: `get` in that namespace |
 | Argo CD › Manage | `applications.argoproj.io`: `get`, `list`, `watch`, `patch`, `delete` in the Argo CD namespace |
 | Edit, scale, restart, delete | `patch`, `update` or `delete` on the resource |
+
+**Settings › Access** checks all of these for you: it asks the cluster what your identity may do in the namespace you choose, and **Copy as text** gives you something to send to an administrator.
 
 Argo CD actions do not need an Argo CD login. Rubban updates the Application objects the same way the Argo CD API server does, so your cluster RBAC decides what you can do. If you cannot list Argo CD applications in all namespaces, Rubban falls back to the `argocd` namespace.
 

@@ -18,6 +18,7 @@ import { consumption, resetPrometheusProvider } from './detail-common.js';
 import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErrors } from './argocd.js';
 import { rabbitmqPage } from './rabbitmq.js';
 import * as credentials from './credentials.js';
+import { permissionText, scopeText, groupByFeature, asText, summary } from './access.js';
 import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
 
 const usage = createUsage({ api });
@@ -313,6 +314,41 @@ async function signIn(context) {
     else $('#status-message').textContent = 'Sign-in failed; try again';
   } });
 }
+// ---- Access checks (Settings › Access) -------------------------------------------------------
+// Opens the access panel of a cluster (the current one by default).
+async function showAccess(context = state.context) {
+  if (context && context !== state.context) await selectContext(context, { namespace: '*' });
+  state.scrollTarget = 'access-panel';
+  openView('settings', undefined, 'Settings');
+}
+hooks.showAccess = showAccess;
+function accessPanel() {
+  const context = state.context;
+  const body = el('div');
+  const namespace = el('select', { 'aria-label': 'Namespace to check' }, el('option', { value: '*', text: 'All namespaces' }), ...(cacheOf(context).namespaces || []).map(value => el('option', { value, text: value })));
+  namespace.value = state.namespace === '*' || (cacheOf(context).namespaces || []).includes(state.namespace) ? state.namespace : '*';
+  let last = null;
+  const run = refresh => task(async () => {
+    body.replaceChildren(loading('Asking your cluster what you may do…'));
+    try { last = await post('/api/access/check', { context, namespace: namespace.value, refresh }, { context }); draw(); } catch (error) { last = null; if (error.name !== 'AbortError') body.replaceChildren(info(error.message, 'error')); }
+  });
+  const draw = () => {
+    const rows = [];
+    for (const group of groupByFeature(last.checks)) group.checks.forEach((check, index) => rows.push(el('tr', {},
+      el('td', { text: index ? '' : group.feature }),
+      el('td', {}, el('code', { text: permissionText(check) }), el('small', { class: 'muted', text: ` ${scopeText(check)}` })),
+      el('td', { title: check.error || check.reason || (check.allowed ? 'Allowed' : 'Denied') }, el('span', { class: check.allowed ? 'access-yes' : 'access-no', text: check.allowed ? '✓' : '✗' }), check.allowed ? null : el('small', { class: 'muted', text: ` ${check.error ? 'could not check' : check.reason || 'denied'}` })))));
+    body.replaceChildren(
+      el('p', { class: 'muted', text: `${last.user ? `Signed in as ${last.user}${last.groups?.length ? ` · groups: ${last.groups.join(', ')}` : ''}. ` : ''}${summary(last)}` }),
+      el('table', { class: 'access-table' }, el('thead', {}, el('tr', {}, ['Feature', 'Permission', 'Result'].map(title => el('th', { text: title })))), el('tbody', {}, rows)));
+  };
+  namespace.addEventListener('change', run(false));
+  const copy = button('Copy as text', task(async () => { if (!last) return; await navigator.clipboard.writeText(asText(last, { label: labelFor(context), context })); toast('Copied.'); }), 'compact quiet');
+  const node = panel(`Access · ${labelFor(context)}`, [info('What your identity may do in this cluster, asked of the API server (SelfSubjectAccessReview). Nothing is changed.'), el('div', { class: 'form-actions start', style: 'margin:10px 0' }, el('label', { class: 'inline-label', text: 'Namespace ' }, namespace), button('Re-check', run(true), 'compact'), copy), body]);
+  node.id = 'access-panel';
+  run(false)();
+  return node;
+}
 // ---- Live data: WebSocket subscriptions to shared Kubernetes watches -------------------------
 const LIVE_LABELS = { connecting: 'Connecting', live: 'Live', reconnecting: 'Reconnecting', polling: 'Polling', snapshot: 'Snapshot', error: 'Error' };
 const LIVE_RANK = { error: 5, reconnecting: 4, connecting: 3, snapshot: 2, polling: 1, live: 0 };
@@ -545,7 +581,10 @@ async function render() {
       case 'ai': node = aiPage(); break;
       default: node = empty('View not available', 'Select a view from the sidebar.');
     }
-    if (id === state.renderId) $('#main').replaceChildren(node);
+    if (id === state.renderId) {
+      $('#main').replaceChildren(node);
+      if (state.scrollTarget) { document.getElementById(state.scrollTarget)?.scrollIntoView(); state.scrollTarget = ''; }
+    }
   } catch (error) { if (id === state.renderId) $('#main').replaceChildren(displayError(error)); }
 }
 
@@ -1297,6 +1336,7 @@ async function settingsPage() {
   root.append(updatesPanel());
   const themeLabels = { system: 'System', light: 'Light', dark: 'Dark' };
   root.append(panel('Appearance', makeForm([{ name: 'theme', label: 'Theme', options: THEMES.map(value => ({ value, label: themeLabels[value] })), value: state.preferences.theme || 'system', help: 'System follows your Windows or macOS appearance setting.' }], 'Save appearance', values => { applyTheme(values.theme); return save({ theme: values.theme }); })));
+  if (state.context) root.append(accessPanel());
   if (state.context) {
     const current = state.preferences.prometheusByContext?.[state.context] || { mode: 'auto' };
     const form = makeForm([

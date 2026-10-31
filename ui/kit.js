@@ -464,7 +464,11 @@ export function table(items, columns, onRow, options = {}) {
 export function page(title, description, controls) { const root = el('div'); root.append(el('div', { class: 'page-heading' }, el('div', {}, el('h1', { text: title }), el('p', { text: description })), controls)); return root; }
 export function panel(title, content, trailing) { return el('section', { class: 'panel' }, title ? el('div', { class: 'panel-heading' }, title, trailing) : null, el('div', { class: 'panel-body' }, content)); }
 export function empty(title, description, action, icon = '◈') { return el('div', { class: 'empty-state' }, el('div', { class: 'empty-icon', text: icon }), el('h2', { text: title }), el('p', { text: description }), action); }
-export function displayError(error, title = 'Unable to load this view') { return empty(title, error.message, button('Try again', () => hooks.render?.(), 'primary compact'), '⚠'); }
+export function displayError(error, title = 'Unable to load this view') {
+  // A 403 is a permissions question: offer the check that says which permission is missing.
+  const retry = button('Try again', () => hooks.render?.(), 'primary compact');
+  return empty(title, error.message, error.status === 403 ? el('div', { class: 'actions' }, retry, button('Check my access', () => hooks.showAccess?.(), 'compact')) : retry, '⚠');
+}
 // Definition list; rows with empty values are omitted, values may be nodes.
 export function dl(pairs) {
   const node = el('dl', { class: 'definition' });
