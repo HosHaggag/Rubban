@@ -75,20 +75,46 @@ test('snoozing hides a problem for an hour, then it comes back', () => {
   h.advance(2 * MIN); assert.equal(h.store.all().length, 2);
 });
 
-test('an unreachable cluster is one information problem, flagged when credentials are the cause, and the feed is retried', () => {
+test('a cluster whose every feed failed is one information problem, flagged when credentials are the cause, and the feeds are retried', () => {
   const h = harness();
   h.store.sync(['prod']); h.store.contextRendered('prod');
-  const pods = h.feedFor('prod', 'pods');
-  pods.onError(Object.assign(new Error('credentials expired'), { code: 'credentials' }));
+  for (const feed of h.feeds) feed.onError(Object.assign(new Error('credentials expired'), { code: 'credentials' }));
   h.flush();
   const [problem] = h.store.all();
   assert.equal(problem.severity, 'info'); assert.equal(problem.title, 'Cluster not reachable'); assert.equal(problem.credentials, true); assert.equal(problem.resource, 'cluster');
   const before = h.feeds.length;
-  const retry = h.timers.filter(t => t.ms === 30_000 && t.live).at(-1); // the last one is the retry; the first is the clock tick
-  retry.fn();
-  assert.equal(h.feeds.length, before + 1, 'the failed kind is subscribed again');
+  h.timers.filter(t => t.ms === 30_000 && t.live).slice(1).forEach(t => t.fn()); // the first 30 s timer is the clock tick
+  assert.equal(h.feeds.length, before + 7, 'every failed kind is subscribed again');
   h.feedFor('prod', 'pods').onData([]); h.flush();
-  assert.deepEqual(h.store.all(), [], 'the error clears once data flows again');
+  assert.deepEqual(h.store.all(), [], 'the row goes as soon as one feed works again');
+});
+
+test('one refused feed is not an unreachable cluster, and a refusal is not retried', () => {
+  const h = harness();
+  h.store.sync(['prod']); h.store.contextRendered('prod');
+  const before = h.timers.length;
+  h.feedFor('prod', 'nodes').onError(Object.assign(new Error('nodes is forbidden'), { status: 403 }));
+  h.flush();
+  assert.deepEqual(h.store.all(), []);
+  assert.equal(h.timers.filter(t => t.ms === 30_000).length, h.timers.slice(0, before).filter(t => t.ms === 30_000).length, 'no retry for a 403');
+  h.feedFor('prod', 'pods').onError(new Error('timeout'));
+  h.flush();
+  assert.deepEqual(h.store.all(), [], 'two of seven feeds failing is still a reachable cluster');
+});
+
+test('the UI is only told when what it shows changed, and Argo is subscribed once', () => {
+  const h = harness({ argo: true });
+  h.store.sync(['prod']); h.store.contextRendered('prod');
+  assert.equal(h.feeds.filter(f => f.resource === 'applications.argoproj.io').length, 1);
+  h.store.sync(['prod']); h.store.sync(['prod']);
+  assert.equal(h.feeds.filter(f => f.resource === 'applications.argoproj.io').length, 1, 'syncing again does not subscribe again');
+  h.feedFor('prod', 'pods').onData([crashing('api')]); h.flush();
+  const after = h.changes();
+  h.feedFor('prod', 'pods').onData([crashing('api')]); h.flush();
+  h.timers.filter(t => t.ms === 30_000 && t.live).forEach(t => t.fn());
+  assert.equal(h.changes(), after, 'the same problems are not announced again');
+  h.feedFor('prod', 'pods').onData([crashing('api'), crashing('web')]); h.flush();
+  assert.equal(h.changes(), after + 1);
 });
 
 test('problems that need five minutes of evidence use the time they were first seen', () => {

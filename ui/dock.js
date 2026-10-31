@@ -103,7 +103,7 @@ export function openLogs(target) {
     const needle = searchInput.value;
     if (highlightSupported) { if (highlightOwner === session) { CSS.highlights.delete('rubban-log-match'); CSS.highlights.delete('rubban-log-current'); } }
     if (!needle) { matches = []; matchIndex = -1; searchCount.textContent = ''; return; }
-    output.normalize();
+    // The text node is never split, and must not be normalized: that would remove it while it is empty.
     const text = textNode.textContent || '';
     const lower = text.toLowerCase(); const query = needle.toLowerCase();
     const found = []; let at = lower.indexOf(query);

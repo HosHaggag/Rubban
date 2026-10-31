@@ -9,10 +9,10 @@ const SNOOZE_MS = 60 * 60_000;
 const SNOOZE_KEY = 'rubban.problems.snoozed';
 
 export function createProblemStore({ liveList, hasArgo = () => false, readStore = (key, fallback) => fallback, writeStore = () => {}, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, onChange = () => {} }) {
-  const entries = new Map(); // context -> { abort, raw: Map(resource -> items), seen: Map(id -> ms), error, problems, retry: Map }
+  const entries = new Map(); // context -> { abort, raw: Map(resource -> items), seen: Map(id -> ms), errors: Map(resource -> error), subscribed, problems, retry: Map }
   const rendered = new Set();
   let wanted = new Set();
-  let debounce = null; let tickTimer = null;
+  let debounce = null; let tickTimer = null; let lastSignature = '';
 
   const snoozed = () => { const map = readStore(SNOOZE_KEY, {}); return map && typeof map === 'object' ? map : {}; };
   const isSnoozed = id => (snoozed()[id] || 0) > now();
@@ -26,28 +26,44 @@ export function createProblemStore({ liveList, hasArgo = () => false, readStore 
     const problems = [];
     for (const [resource, items] of entry.raw) problems.push(...evaluate(resource, items, ctx));
     for (const id of [...entry.seen.keys()]) if (!asked.has(id)) entry.seen.delete(id);
-    if (entry.error) problems.push({ id: `${context}|cluster||${context}|unreachable`, context, resource: 'cluster', namespace: '', name: context, severity: 'info', title: 'Cluster not reachable', detail: entry.error.message, since: null, credentials: entry.error.code === 'credentials' });
+    // One feed refused (a namespace-scoped user cannot watch nodes) is not an unreachable cluster: only when
+    // every feed failed is the cluster reported.
+    if (entry.errors.size && entry.errors.size >= entry.subscribed) {
+      const error = [...entry.errors.values()].find(item => item.code === 'credentials') || entry.errors.values().next().value;
+      problems.push({ id: `${context}|cluster||${context}|unreachable`, context, resource: 'cluster', namespace: '', name: context, severity: 'info', title: 'Cluster not reachable', detail: error.message, since: null, credentials: error.code === 'credentials' });
+    }
     entry.problems = problems;
   }
-  function recomputeAll() { for (const context of entries.keys()) recompute(context); onChange(); }
+  // What the UI shows: only a change in it is worth redrawing the tab bar and the page for.
+  const signature = () => [...entries].map(([context, entry]) => `${context}:${entry.problems.map(problem => `${problem.id}/${problem.severity}/${problem.title}`).join(',')}`).join(';');
+  function recomputeAll() {
+    for (const context of entries.keys()) recompute(context);
+    const next = signature();
+    if (next !== lastSignature) { lastSignature = next; onChange(); }
+  }
   function schedule() { if (!debounce) debounce = setTimer(() => { debounce = null; recomputeAll(); }, DEBOUNCE_MS); }
 
   function subscribe(context, entry, resource) {
     liveList({ resource, context, namespace: '*', signal: entry.abort.signal,
-      onData: items => { entry.error = null; entry.raw.set(resource, items); schedule(); },
+      onData: items => { entry.errors.delete(resource); entry.raw.set(resource, items); schedule(); },
       onError: error => {
-        entry.error = { message: error?.message || 'Unknown error', code: error?.code };
+        entry.errors.set(resource, { message: error?.message || 'Unknown error', code: error?.code, status: error?.status });
         entry.raw.delete(resource);
         schedule();
-        // A failed feed is closed; try again later while the cluster stays open.
+        // A refusal will not change by asking again; anything else is retried while the cluster stays open.
+        if (error?.status === 403) return;
         entry.retry.set(resource, setTimer(() => { if (entries.get(context) === entry && !entry.abort.signal.aborted) subscribe(context, entry, resource); }, RETRY_MS));
       } });
   }
 
   function start(context) {
-    const entry = { abort: new AbortController(), raw: new Map(), seen: new Map(), error: null, problems: [], retry: new Map() };
+    const entry = { abort: new AbortController(), raw: new Map(), seen: new Map(), errors: new Map(), subscribed: 0, problems: [], retry: new Map(), argo: false };
     entries.set(context, entry);
-    for (const resource of RESOURCES) if (resource !== 'applications.argoproj.io' || hasArgo(context)) subscribe(context, entry, resource);
+    for (const resource of RESOURCES) {
+      if (resource === 'applications.argoproj.io') { if (!hasArgo(context)) continue; entry.argo = true; }
+      entry.subscribed++;
+      subscribe(context, entry, resource);
+    }
   }
   function stop(context) {
     const entry = entries.get(context);
@@ -65,8 +81,8 @@ export function createProblemStore({ liveList, hasArgo = () => false, readStore 
       for (const context of [...entries.keys()]) if (!wanted.has(context)) { stop(context); changed = true; }
       for (const context of wanted) if (rendered.has(context) && !entries.has(context)) { start(context); changed = true; }
       // Argo CD may have been discovered after the feeds started.
-      for (const [context, entry] of entries) if (hasArgo(context) && !entry.raw.has('applications.argoproj.io') && !entry.retry.has('applications.argoproj.io') && !entry.argo) { entry.argo = true; subscribe(context, entry, 'applications.argoproj.io'); }
-      if (changed) onChange();
+      for (const [context, entry] of entries) if (hasArgo(context) && !entry.argo) { entry.argo = true; entry.subscribed++; subscribe(context, entry, 'applications.argoproj.io'); }
+      if (changed) { lastSignature = signature(); onChange(); }
       if (entries.size && !tickTimer) tickTimer = setTimer(function tick() { recomputeAll(); tickTimer = entries.size ? setTimer(tick, TICK_MS) : null; }, TICK_MS);
     },
     // The first render of a tab on this cluster has happened: the feeds may open.

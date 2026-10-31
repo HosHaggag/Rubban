@@ -85,7 +85,7 @@ function icon(name, className = 'nav-svg') {
   svg.append(path); return svg;
 }
 // Running port forwards, counted for the sidebar on every page.
-const forwardsPoller = createForwardsPoller({ fetchItems: async () => (await get('/api/forwards')).items || [], onCount: () => navigation() });
+const forwardsPoller = createForwardsPoller({ fetchItems: async () => (await get('/api/forwards', {}, { signal: AbortSignal.timeout(5000) })).items || [], onCount: () => navigation() });
 hooks.forwardsChanged = () => forwardsPoller.refresh();
 const leaf = (title, section, resource, extra = {}) => ({ title, section, resource, ...extra });
 const kube = (title, resource, extra) => leaf(title, 'resource', resource, extra);
@@ -361,6 +361,8 @@ function problemsPage() {
       && (!problemFilters.onlyTab || problem.context === tabContext)
       && (!problemFilters.namespace || (problem.namespace || '').includes(problemFilters.namespace)));
     const contexts = problemsStore.contexts();
+    if (problemFilters.context && !contexts.includes(problemFilters.context)) { problemFilters.context = ''; fillClusters(); draw(); return; }
+    if (!shown.length && problemsStore.all().length) { list.replaceChildren(empty('No problems match these filters', 'Change the severity, cluster or namespace filter to see the others.', undefined, '⌕')); return; }
     if (!shown.length) { list.replaceChildren(empty(contexts.length ? `Nothing to report in ${contexts.length} cluster${contexts.length === 1 ? '' : 's'}` : 'No clusters are being watched yet', contexts.length ? 'Pods, workloads, nodes and Argo CD applications look healthy.' : 'Open a cluster and its problems appear here.', undefined, contexts.length ? '✓' : '◈')); return; }
     const nodes = [];
     for (const context of [...new Set(shown.map(problem => problem.context))]) {
@@ -627,7 +629,7 @@ async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
   const contextAbort = new AbortController(); state.contextAbort = contextAbort;
   if (!fromTab) {
     const tab = activeTab();
-    const twin = state.tabs.find(item => item !== tab && item.context === name && sameView(item, tab));
+    const twin = tab.section === 'compare' ? null : state.tabs.find(item => item !== tab && item.context === name && sameView(item, tab));
     if (twin) { state.tabs = state.tabs.filter(item => item !== tab); state.active = twin.id; twin.namespace = namespace; }
     else { tab.context = name; tab.namespace = namespace; }
   }
