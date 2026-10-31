@@ -223,8 +223,9 @@ func TestServesUIWithTokenAndCSP(t *testing.T) {
 			t.Fatalf("%s: %d want %d", path, r.StatusCode, want)
 		}
 	}
-	if f.do("POST", "/app.js", nil, nil).Status != 404 {
-		// POST to a non-API path is rejected before the UI server sees a body.
+	// Only GET and HEAD reach the UI files; a POST is refused before any body is read.
+	if got := f.do("POST", "/app.js", nil, nil).Status; got != 405 {
+		t.Fatalf("POST /app.js: %d want 405", got)
 	}
 }
 

@@ -318,9 +318,3 @@ func (c *discoveryCache) resolve(ctx context.Context, kubeContext, resource stri
 	}
 	return *target, nil
 }
-
-func (c *discoveryCache) clear() {
-	c.mu.Lock()
-	c.m = map[string]*discoveryEntry{}
-	c.mu.Unlock()
-}

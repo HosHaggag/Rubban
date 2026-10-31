@@ -28,7 +28,7 @@ func versionQuad(v string) [4]uint16 {
 	v, _, _ = strings.Cut(v, "-")
 	for i, part := range strings.SplitN(v, ".", 3) {
 		n, _ := strconv.Atoi(part)
-		quad[i] = uint16(n)
+		quad[i] = uint16(min(max(n, 0), 65535))
 	}
 	return quad
 }

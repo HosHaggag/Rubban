@@ -240,25 +240,6 @@ func (b *Backend) routeNamespaces(q *request) (any, int, error) {
 	return doc, 200, err
 }
 
-func selectorArgs(q *request) ([]string, error) {
-	var args []string
-	if s := q.query["labelSelector"]; s != "" {
-		sel, err := validateSelector(s, "label selector")
-		if err != nil {
-			return nil, err
-		}
-		args = append(args, "--selector="+sel)
-	}
-	if s := q.query["fieldSelector"]; s != "" {
-		sel, err := validateSelector(s, "field selector")
-		if err != nil {
-			return nil, err
-		}
-		args = append(args, "--field-selector="+sel)
-	}
-	return args, nil
-}
-
 // selectorValues validates the optional label and field selectors of a list request.
 func selectorValues(q *request) (ListOptions, error) {
 	var o ListOptions

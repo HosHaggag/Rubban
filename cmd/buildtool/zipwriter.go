@@ -94,7 +94,8 @@ func zipDirectory(folder, zipFile string) error {
 	for _, e := range entries {
 		h := &zip.FileHeader{Name: e.name, CreatorVersion: 3<<8 | 20}
 		h.SetMode(e.mode)
-		h.SetModTime(e.modTime) // CreateRaw does not convert Modified itself
+		//lint:ignore SA1019 CreateRaw writes the legacy DOS fields only; Modified alone would be lost.
+		h.SetModTime(e.modTime)
 		switch {
 		case e.isDir:
 			h.Method = zip.Store

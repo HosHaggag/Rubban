@@ -306,7 +306,4 @@ func validateChart(v any) (string, error) {
 	return chart, nil
 }
 
-// str reads a string field of a decoded JSON body; non-strings become nil so validators reject them.
-func field(body map[string]any, key string) any { return body[key] }
-
 func errf(format string, a ...any) error { return fmt.Errorf(format, a...) }

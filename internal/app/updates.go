@@ -21,25 +21,6 @@ type Updates interface {
 	Stop()
 }
 
-// disabledUpdates is used until an updater is wired in, and in builds that cannot update.
-type disabledUpdates struct{ current string }
-
-func (d disabledUpdates) State() any {
-	return map[string]any{"status": "idle", "current": d.current, "disabled": true}
-}
-func (d disabledUpdates) Summary() UpdateSummary {
-	return UpdateSummary{Status: "idle", Current: d.current, Disabled: true}
-}
-func (d disabledUpdates) Check(context.Context) any    { return d.State() }
-func (d disabledUpdates) Download(context.Context) any { return d.State() }
-func (d disabledUpdates) Install(context.Context) (any, error) {
-	return d.State(), nil
-}
-func (d disabledUpdates) Dismiss() any                        { return d.State() }
-func (d disabledUpdates) Subscribe(func(any)) (cancel func()) { return func() {} }
-func (d disabledUpdates) Start()                              {}
-func (d disabledUpdates) Stop()                               {}
-
 // UpdateMessage is the Help › Check for updates… text; it never assumes an update exists.
 func UpdateMessage(s UpdateSummary) string {
 	switch {

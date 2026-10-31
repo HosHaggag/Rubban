@@ -26,7 +26,7 @@ func webDataDir() string {
 
 // writeConnectionFile publishes the backend URL and token for the MCP bridge (mode 0600).
 func writeConnectionFile(dataDir string, conn server.Connection) (string, error) {
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return "", err
 	}
 	file := filepath.Join(dataDir, "connection.json")

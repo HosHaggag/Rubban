@@ -74,7 +74,7 @@ func (b *Backend) writePreferences(value map[string]any) (map[string]any, error)
 	if len(data) > 256*1024 {
 		return nil, problem("Preferences are too large", 413)
 	}
-	if err := os.MkdirAll(b.dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(b.dataDir, 0o700); err != nil {
 		return nil, err
 	}
 	if err := writeFileAtomic(b.preferencesPath(), append(data, '\n'), 0o600, 6); err != nil {

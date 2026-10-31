@@ -1,0 +1,13 @@
+# gitleaks configuration: the vendored terminal bundles are minified third-party code whose
+# identifiers trip the generic-api-key rule; test fixtures contain made-up credentials on purpose.
+title = "Rubban"
+[extend]
+useDefault = true
+[allowlist]
+paths = [
+  '''^ui/xterm\.js$''',
+  '''^ui/vendor\.js$''',
+  '''^ui/addon-fit\.js$''',
+  '''_test\.go$''',
+  '''\.test\.mjs$''',
+]

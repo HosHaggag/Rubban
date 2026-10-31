@@ -265,7 +265,7 @@ func (u *Updater) persist() {
 	if err != nil {
 		return
 	}
-	if os.MkdirAll(u.cfg.DataDir, 0o755) == nil {
+	if os.MkdirAll(u.cfg.DataDir, 0o700) == nil {
 		_ = os.WriteFile(u.statePath, data, 0o600) // Not essential.
 	}
 }
@@ -415,7 +415,7 @@ func (u *Updater) Download(ctx context.Context) (State, error) {
 	if status != StatusAvailable || asset == nil {
 		return State{}, errors.New("There is no update to download")
 	}
-	if err := os.MkdirAll(u.updates, 0o755); err != nil {
+	if err := os.MkdirAll(u.updates, 0o700); err != nil {
 		return State{}, err
 	}
 	partial := filepath.Join(u.updates, asset.Name+".part")

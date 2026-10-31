@@ -109,8 +109,8 @@ func ReadPort(dataDir string) int {
 
 // WritePort remembers the port so the page keeps one origin (and its localStorage) across launches.
 func WritePort(dataDir string, port int) {
-	_ = os.MkdirAll(dataDir, 0o755)
-	_ = os.WriteFile(filepath.Join(dataDir, "port"), []byte(strconv.Itoa(port)+"\n"), 0o644)
+	_ = os.MkdirAll(dataDir, 0o700)
+	_ = os.WriteFile(filepath.Join(dataDir, "port"), []byte(strconv.Itoa(port)+"\n"), 0o600)
 }
 
 // PortFree reports whether 127.0.0.1:port can be bound right now.

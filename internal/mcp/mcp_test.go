@@ -618,7 +618,7 @@ func TestToolCallFailuresAreGeneric(t *testing.T) {
 	big := strings.Repeat("x", 5*1024*1024)
 	cases := map[string]http.HandlerFunc{
 		"http 500":    func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "boom secret-detail "+testToken, 500) },
-		"http 403":    func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "no", 403) },
+		"http 403":    func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "no", http.StatusForbidden) },
 		"redirect":    func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/elsewhere", http.StatusFound) },
 		"bad json":    jsonBackend("not json"),
 		"oversize":    jsonBackend(`{"a":"` + big + `"}`),
