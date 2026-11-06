@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Timeline: what changed, in one place.** A new **Timeline** view (after Events in the sidebar) lists everything that changed in the tab's cluster and namespace, newest first: Deployment rollouts with what changed in the pod template ("storefront 4.2.1 → 4.3.0 · env BUILD added", with the full diff one click away), StatefulSet and DaemonSet revisions, ConfigMap and Secret writes (names and who wrote them, never values), restarts and terminations with their exit codes, warning events grouped per object with their count, autoscaler and manual scaling, Jobs and CronJobs, Helm release revisions, Argo CD syncs and node condition changes. A density strip shows the changes and warnings over 1 h, 6 h, 24 h or 7 days and jumps to a moment when clicked; chips filter by category and the list follows the cluster live. Changes that happened shortly before a burst of warnings or restarts on a workload they affect (its own rollout, a ConfigMap or Secret it reads, its Helm release or Argo CD application) are marked **likely related**. On the Problems page, **What changed?** opens the timeline of the problem's namespace focused on the 30 minutes before it started, with the problem's own workload highlighted.
+
 ## 0.13.1: The RabbitMQ console no longer freezes Rubban
 
 - **Opening a RabbitMQ console no longer freezes the window.** The management console signs in and starts with requests that hold its page until the cluster answers, and it ran in the same web view process as Rubban's own page. Every one of those answers came through the cluster tunnel, so the whole window stopped responding, and went blank when it had to repaint, until they arrived; when a tunnel connection stalled, it stayed that way until Rubban was closed. The console now runs in a process of its own: a slow or stuck cluster holds up the console only, and the rest of Rubban keeps working.
