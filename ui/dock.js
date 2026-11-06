@@ -3,6 +3,7 @@
 import { $, el, button, toast, task, socketURL, readStore, writeStore, download, state, hooks } from './kit.js';
 import { currentTheme, onThemeChange } from './theme.js';
 import { podOf, parseFilter, createPodColors, splitLines, renderLines, podsStatus, containersOfPods } from './logs-util.js';
+import { createLogPatterns } from './logpatterns-view.js';
 
 const sessions = [];
 let active = null;
@@ -137,7 +138,8 @@ export function openLogs(target) {
       slotHighlights[colors.indexOf(mark.pod)].add(range);
     }
   };
-  const filterOptions = () => ({ include, exclude, hidden: hiddenPods });
+  const patterns = createLogPatterns({ colors, output, refilter: () => renderAll(), paused: () => paused });
+  const filterOptions = () => patterns.filters({ include, exclude, hidden: hiddenPods });
   const legend = el('span', { class: 'log-legend' });
   const drawLegend = () => legend.replaceChildren(...[...knownPods].map(pod => {
     const chip = el('button', { type: 'button', class: `log-chip${hiddenPods.has(pod) ? ' off' : ''}`, style: `color:var(--log-pod-${colors.indexOf(pod)})`, title: hiddenPods.has(pod) ? `Show ${pod}` : `Hide ${pod}`, 'aria-pressed': String(!hiddenPods.has(pod)) }, pod);
@@ -170,7 +172,8 @@ export function openLogs(target) {
   function ingest(chunk) {
     const split = splitLines(rest, chunk); rest = split.rest;
     for (const line of split.lines) { lines.push(line); bytes += line.length; const info = podOf(line); if (info) notePod(info.pod); }
-    clearTimeout(restTimer); restTimer = rest ? setTimeout(() => { if (rest) { lines.push(rest); bytes += rest.length; rest = ''; renderTail(); } }, 300) : null;
+    patterns.ingest(split.lines);
+    clearTimeout(restTimer); restTimer = rest ? setTimeout(() => { if (rest) { lines.push(rest); patterns.ingest([rest]); bytes += rest.length; rest = ''; renderTail(); } }, 300) : null;
     if (bytes > 4000000) {
       // Drop the oldest lines down to 3 MB and draw again.
       let drop = 0; while (bytes > 3000000 && drop < lines.length) bytes -= lines[drop++].length;
@@ -189,18 +192,18 @@ export function openLogs(target) {
 
   const followToggle = toggle('Follow', 'follow', 'Keep scrolling to the newest lines');
   const toolbar = el('div', { class: 'dock-toolbar' },
-    target.pod ? el('span', { class: 'dock-target', text: target.pod }) : el('span', { class: 'dock-target', text: `selector ${target.selector}` }),
+    target.pod ? el('span', { class: 'dock-target', text: target.pod }) : el('span', { class: 'dock-target', text: `selector ${target.selector}` }), patterns.toggle,
     containers.length || !target.pod ? containerSelect : null, sinceSelect, tailSelect,
     toggle('Timestamps', 'timestamps', 'Prefix each line with its timestamp'),
     target.pod ? toggle('Previous', 'previous', 'Logs of the previous terminated container') : null,
     toggle('Wrap', 'wrap', 'Wrap long lines'), followToggle, pauseButton,
-    includeInput, excludeInput, legend,
+    includeInput, excludeInput, legend, patterns.bar,
     el('span', { class: 'spacer' }),
     searchInput, searchCount,
     button('▴', () => search(-1), 'quiet compact icon-text'), button('▾', () => search(1), 'quiet compact icon-text'),
     button('Download', () => download(`${(target.pod || target.title || 'logs').replace(/[^\w.-]+/g, '_')}${options.container && options.container !== '*' ? `-${options.container}` : ''}.log`, textNode.data), 'quiet compact'),
-    button('Clear', () => { lines.length = 0; rendered = 0; rest = ''; bytes = 0; renderAll(); search(0); }, 'quiet compact'));
-  const root = el('div', { class: 'dock-session logs' }, toolbar, output);
+    button('Clear', () => { lines.length = 0; rendered = 0; rest = ''; bytes = 0; patterns.reset(); renderAll(); search(0); }, 'quiet compact'));
+  const root = el('div', { class: 'dock-session logs' }, toolbar, output, patterns.root);
   let socket = null; let researchTimer = null;
   output.addEventListener('scroll', () => { const atBottom = output.scrollHeight - output.scrollTop - output.clientHeight < 40; if (!atBottom && options.follow && document.activeElement === output) { options.follow = false; followToggle.querySelector('input').checked = false; } });
   // Control messages arrive as binary frames: the pods of the selector and the state of each reader.
@@ -213,7 +216,7 @@ export function openLogs(target) {
     } else if (message.type === 'reader' && message.state === 'started') setStatus(session, podsStatus(pods), 'good');
   }
   function connect() {
-    socket?.close(); lines.length = 0; rendered = 0; rest = ''; bytes = 0; pods = []; renderAll();
+    socket?.close(); lines.length = 0; rendered = 0; rest = ''; bytes = 0; pods = []; patterns.reset(); renderAll();
     options.container = containerSelect.value; options.since = sinceSelect.value; options.tail = tailSelect.value;
     const query = { context: target.context, namespace: target.namespace, tail: options.tail, timestamps: options.timestamps ? 'true' : undefined, since: options.since || undefined, follow: 'true' };
     if (target.pod) Object.assign(query, { pod: target.pod, container: options.container || undefined, previous: options.previous ? 'true' : undefined });
@@ -233,7 +236,7 @@ export function openLogs(target) {
   }
   containerSelect.addEventListener('change', connect); sinceSelect.addEventListener('change', connect); tailSelect.addEventListener('change', () => { options.tail = tailSelect.value; savePrefs(); connect(); });
   const session = { kind: 'logs', context: target.context, title: target.title || `${target.pod}${options.container && options.container !== '*' ? ` · ${options.container}` : ''}`, root,
-    dispose: () => { socket?.close(); socket = null; clearTimeout(restTimer); clearTimeout(filterTimer); if (highlightSupported) { if (highlightOwner === session) { CSS.highlights.delete('rubban-log-match'); CSS.highlights.delete('rubban-log-current'); } if (podOwner === session) { slotHighlights.forEach((_, slot) => CSS.highlights.delete(`rubban-pod-${slot}`)); podOwner = null; } } },
+    dispose: () => { socket?.close(); socket = null; clearTimeout(restTimer); clearTimeout(filterTimer); patterns.dispose(); if (highlightSupported) { if (highlightOwner === session) { CSS.highlights.delete('rubban-log-match'); CSS.highlights.delete('rubban-log-current'); } if (podOwner === session) { slotHighlights.forEach((_, slot) => CSS.highlights.delete(`rubban-pod-${slot}`)); podOwner = null; } } },
     copy: () => window.getSelection()?.toString() || textNode.data, onShow: () => { registerPodHighlights(); if (options.follow) output.scrollTop = output.scrollHeight; } };
   add(session);
   registerPodHighlights();
