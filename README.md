@@ -62,6 +62,7 @@ CPU and memory are shown for pods, workloads, namespaces and nodes against their
 - **Tabs like a browser.** Each tab keeps its cluster, namespace and view. **+** or Ctrl+T opens another cluster in a new tab, Ctrl+W closes one and Ctrl+Tab moves between them. Your tabs come back on the next launch.
 - **Cluster switcher.** A searchable switcher (Ctrl+Shift+K) with pinned clusters, and a **Clusters** page to rename a cluster, give it an icon and a colour, and tag it production, staging or development.
 - **Import a kubeconfig.** Paste one or pick a file. Rubban keeps a private copy and never changes your own kubeconfig.
+- **Topology map.** **Topology** draws a namespace's Ingresses, Services, workloads, config and storage as a live graph with health on every node and pods as coloured dots. References to things that do not exist (an Ingress backend, a ConfigMap in `env`, a TLS Secret) show as red dashed nodes. Hover a ConfigMap to see everything that depends on it. Resources have the same map, around themselves, in a **Map** tab in their details.
 - **Review before apply.** The Create dialog and the YAML tab show the coloured diff, the objects the change touches, kubectl's warnings and the server's dry-run result before **Apply** is enabled.
 - **Actions.** Scale, restart, roll back, cordon, drain and evict, and trigger CronJobs.
 - **Terminals.** Pod exec and attach, node shells and a local terminal scoped to the selected cluster open in a tabbed dock.
@@ -230,7 +231,7 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 1. **Choose a cluster** in the selector at the top left. Rubban lists the contexts from your kubeconfig and does not contact any cluster before you pick one.
 2. **Choose a namespace** in the top bar, or keep *All namespaces*.
 3. **Use the sidebar:**
-   - Overview, Applications, Argo CD, RabbitMQ and Nodes;
+   - Overview, Applications, Topology, Argo CD, RabbitMQ and Nodes;
    - Workloads, Config, Network and Storage;
    - Namespaces, Events, Helm and Access Control;
    - Flux, Gateway API and Custom Resources.
@@ -355,6 +356,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 |---|---|
 | Browse any view | `list` and `watch` on that resource (`get` for details) |
 | Search (Ctrl+K) | `list` on pods, deployments, statefulsets, daemonsets, jobs, cronjobs, services, ingresses, configmaps, secrets, persistentvolumeclaims, namespaces and nodes, in all namespaces; kinds you cannot list are skipped |
+| Topology map | `list` and `watch` on ingresses, services, deployments, statefulsets, daemonsets, cronjobs, jobs, replicasets, pods, configmaps, secrets, persistentvolumeclaims, horizontalpodautoscalers and poddisruptionbudgets in the namespace; kinds you cannot list are drawn as references but not checked |
 | Live CPU and memory | `metrics.k8s.io` `pods` and `nodes`: `list` |
 | Usage for nodes metrics-server misses | `nodes/proxy`: `get` (kubelet summary through the API server) |
 | Usage history and Metrics tabs | `services/proxy`: `get` on the Prometheus service |
