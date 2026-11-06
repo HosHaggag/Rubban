@@ -29,6 +29,7 @@ import { diagnosisCard } from './diagnosis-view.js';
 import { explainError, clusterDown } from './errors.js';
 import { groupProblems, totalsOf } from './problems-group.js';
 import { advisorPage } from './advisor.js';
+import { topologyPage, topologyMap, mapSupported } from './topology.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -52,6 +53,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const ICONS = {
   overview: 'M2.5 2.5h4.5v4.5H2.5z M9 2.5h4.5v4.5H9z M2.5 9h4.5v4.5H2.5z M9 9h4.5v4.5H9z',
   applications: 'M8 1.8 14 5 8 8.2 2 5z M2 8l6 3.2L14 8 M2 11l6 3.2 6-3.2',
+  topology: 'M1.5 6.5h3v3h-3z M6.5 2h3v3h-3z M6.5 11h3v3h-3z M11.5 6.5h3v3h-3z M4.5 7.2 6.5 4.2 M4.5 8.8l2 3 M9.5 4.2l2 3 M9.5 11.8l2-3',
   queue: 'M2 4.5h9 M2 8h9 M2 11.5h9 M11 2.5l2.5 2-2.5 2 M11 6l2.5 2-2.5 2 M11 9.5l2.5 2-2.5 2',
   argo: 'M5.5 3.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M5.5 12.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M13.5 5.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M4 5v6 M12 7c0 2.5-1.5 3.2-4 3.6-1.6.3-3 .7-4 1.4',
   nodes: 'M2.5 2.5h11v4.5h-11z M2.5 9h11v4.5h-11z M5 4.75h.01 M5 11.25h.01 M8 4.75h3 M8 11.25h3',
@@ -98,6 +100,7 @@ const kube = (title, resource, extra) => leaf(title, 'resource', resource, extra
 const NAV = [
   leaf('Overview', 'overview', undefined, { icon: 'overview' }),
   leaf('Applications', 'applications', undefined, { icon: 'applications' }),
+  leaf('Topology', 'topology', undefined, { icon: 'topology' }),
   { id: 'argocd', title: 'Argo CD', icon: 'argo', children: [
     leaf('Manage', 'argocd', undefined, { tabTitle: 'Argo CD · Manage' }),
     kube('Applications', 'applications.argoproj.io', { tabTitle: 'Argo CD Applications' }),
@@ -733,6 +736,7 @@ async function render() {
     switch (tab.section) {
       case 'overview': node = await overview(); break;
       case 'applications': node = await applicationsPage(); break;
+      case 'topology': node = topologyPage({ liveList, liveBadge, consumeResync, refreshView }); break;
       case 'argocd': node = argoManagerPage({ liveList, liveBadge, consumeResync, refreshView, syncSelected, tickAges }); break;
       case 'rabbitmq': node = rabbitmqPage(); break;
       case 'workloads': node = await workloadsPage(); break;
@@ -1380,7 +1384,7 @@ function overviewContent(selected) {
 function resourceDetails(selected) {
   const root = $('#drawer-content'); const body = el('div', { class: 'drawer-body', id: 'resource-detail-panel', role: 'tabpanel', tabindex: '0' });
   const metrics = kindMetrics(selected);
-  const tabDefs = [['overview', 'Overview'], ...(metrics ? [['metrics', 'Metrics']] : []), ['yaml', 'YAML'], ['events', 'Events']];
+  const tabDefs = [['overview', 'Overview'], ...(metrics ? [['metrics', 'Metrics']] : []), ...(mapSupported(selected) ? [['map', 'Map']] : []), ['yaml', 'YAML'], ['events', 'Events']];
   const tabs = el('div', { class: 'detail-tabs', role: 'tablist' });
   const notice = el('div', { class: 'live-notice-slot' });
   let generation = 0;
@@ -1399,6 +1403,7 @@ function resourceDetails(selected) {
     try {
       if (id === 'overview') body.replaceChildren(overviewContent(selected));
       if (id === 'metrics') body.replaceChildren(metricsView(selected, metrics));
+      if (id === 'map') body.replaceChildren(topologyMap(selected, { liveList }));
       if (id === 'yaml') await yamlDetail(selected, body, false, live);
       if (id === 'events') {
         const uid = selected.item.metadata?.uid;
