@@ -28,6 +28,7 @@ import { healthTone, healthFacets } from './health.js';
 import { diagnosisCard } from './diagnosis-view.js';
 import { explainError, clusterDown } from './errors.js';
 import { groupProblems, totalsOf } from './problems-group.js';
+import { advisorPage } from './advisor.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -105,6 +106,7 @@ const NAV = [
   ] },
   leaf('RabbitMQ', 'rabbitmq', undefined, { icon: 'queue' }),
   kube('Nodes', 'nodes', { icon: 'nodes' }),
+  leaf('Advisor', 'advisor', undefined, { icon: 'security' }),
   { id: 'workloads', title: 'Workloads', icon: 'workloads', children: [
     leaf('Overview', 'workloads', undefined, { tabTitle: 'Workloads overview' }),
     kube('Pods', 'pods'), kube('Deployments', 'deployments'), kube('Daemon Sets', 'daemonsets'), kube('Stateful Sets', 'statefulsets'),
@@ -744,6 +746,7 @@ async function render() {
       case 'settings': node = await settingsPage(); break;
       case 'clusters': node = await clustersPage(); break;
       case 'problems': node = problemsPage(); break;
+      case 'advisor': node = advisorPage({ liveList, showResource }); break;
       case 'compare': node = comparePage(tab); break;
       case 'ai': node = aiPage(); break;
       default: node = empty('View not available', 'Select a view from the sidebar.');
