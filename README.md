@@ -63,6 +63,7 @@ CPU and memory are shown for pods, workloads, namespaces and nodes against their
 - **Cluster switcher.** A searchable switcher (Ctrl+Shift+K) with pinned clusters, and a **Clusters** page to rename a cluster, give it an icon and a colour, and tag it production, staging or development.
 - **Import a kubeconfig.** Paste one or pick a file. Rubban keeps a private copy and never changes your own kubeconfig.
 - **Review before apply.** The Create dialog and the YAML tab show the coloured diff, the objects the change touches, kubectl's warnings and the server's dry-run result before **Apply** is enabled.
+- **Capacity, and what a drain would do.** The **Capacity** view shows every node's requests, live usage and pod count against what it can hold, with its pods as tiles sized by their CPU or memory request and coloured by namespace, plus the pods still waiting for a node and why. Pick nodes and **Simulate drain**: Rubban places their pods on the other nodes the way the scheduler would (requests, pod count, node selectors and affinity, taints and tolerations, disruption budgets) and says whether it is safe, and if not, exactly why, before you press **Drain…**.
 - **Actions.** Scale, restart, roll back, cordon, drain and evict, and trigger CronJobs.
 - **Terminals.** Pod exec and attach, node shells and a local terminal scoped to the selected cluster open in a tabbed dock.
 - **Port forwards that survive.** A forward restarts on the same local port when kubectl loses its connection, and comes back when Rubban starts again.
@@ -232,7 +233,7 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 3. **Use the sidebar:**
    - Overview, Applications, Argo CD, RabbitMQ and Nodes;
    - Workloads, Config, Network and Storage;
-   - Namespaces, Events, Helm and Access Control;
+   - Namespaces, Capacity (node fill, pod tiles and the drain simulator), Events, Helm and Access Control;
    - Flux, Gateway API and Custom Resources.
    Ctrl-click (⌘-click on macOS) opens a view in a new tab.
 4. **Tabs work like a browser's.** Each tab remembers its cluster, namespace and view, so two clusters can be open side by side. **+** at the end of the tab bar (or Ctrl+T) opens another cluster in a new tab; the selector at the top left switches the *current* tab's cluster. Last session's tabs come back on the next launch.
