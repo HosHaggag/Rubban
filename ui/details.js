@@ -7,6 +7,7 @@ import { containerState, nodeRoles, nodeCondition, hpaMetrics, quotaUsage, ingre
 import { rowMenu, forwardDialog, logsFor, shell, rollback, setDefaultClass, kubeconfigDialog, openExternal } from './ops.js';
 import { muted, refLink, kindRef, metaSection, conditionsList, tolerationsTable, simpleTable, jsonBlock, affinitySummary, consumption, podsSection, metricsView } from './detail-common.js';
 import { podQueries, namespaceQueries, nodeQueries, pvcQueries, ingressQueries, podPattern } from './promql.js';
+import { canSnapshot, snapshotButton } from './snapshot.js';
 
 const levelBadge = { good: 'good', warn: 'warn', bad: 'bad', done: '', pending: 'warn' };
 const cpuText = value => formatCPU(parseCPU(value));
@@ -23,7 +24,8 @@ export function detailActions(selected) {
     const node = button([el('span', { class: 'btn-icon', text: item.icon || '' }), item.label], () => item.action(), `compact${item.danger ? ' danger' : ''}`);
     node.disabled = Boolean(item.disabled);
     return node;
-  }), comparable ? button([el('span', { class: 'btn-icon', text: '⇆' }), 'Compare…'], () => compareDialog(selected), 'compact') : null);
+  }), comparable ? button([el('span', { class: 'btn-icon', text: '⇆' }), 'Compare…'], () => compareDialog(selected), 'compact') : null,
+  canSnapshot(selected.resource) ? snapshotButton(selected) : null);
 }
 
 // Compare this resource with the same (or another) one in another cluster or namespace. Secrets are not offered.

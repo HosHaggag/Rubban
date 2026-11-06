@@ -1,0 +1,48 @@
+/* Incident snapshot dialog. Colours from the theme tokens only; no animations or transitions. */
+.action-dialog:has(.snapshot){width:min(1080px,94vw);max-width:none}
+.snapshot{display:flex;flex-direction:column;min-height:0}
+.snapshot-lead{margin:0 0 10px}
+.snapshot-steps{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--radius);background:var(--well)}
+.snapshot-step{display:grid;grid-template-columns:18px minmax(160px,auto) 1fr auto;align-items:baseline;gap:8px;padding:7px 12px;font-size:12px;border-bottom:1px solid var(--line-soft)}
+.snapshot-step:last-child{border-bottom:0}
+.snapshot-glyph{font:600 12px var(--mono);text-align:center;color:var(--dim)}
+.snapshot-step.running .snapshot-glyph{color:var(--info)}
+.snapshot-step.done .snapshot-glyph{color:var(--good)}
+.snapshot-step.failed .snapshot-glyph{color:var(--warn)}
+.snapshot-step-label{color:var(--strong);font-weight:500}
+.snapshot-step-note{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.snapshot-step.failed .snapshot-step-note{color:var(--warn-text);white-space:normal}
+.snapshot-step-time{color:var(--dim);font:11px var(--mono)}
+.snapshot-options{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:0 0 10px;border-bottom:1px solid var(--line-soft);margin-bottom:8px}
+.snapshot-options select{width:auto;min-width:96px}
+.snapshot-relog{font-size:12px}
+.snapshot-meta{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:11.5px;margin:2px 0 10px}
+.snapshot-meta .snapshot-redacted{color:var(--accent-text)}
+.snapshot-tabs{margin:0 0 0}
+.snapshot-body{height:min(52vh,560px);overflow:auto;border:1px solid var(--line);border-top:0;border-radius:0 0 var(--radius) var(--radius);background:var(--panel);padding:4px 16px 14px}
+.snapshot-body:focus-visible{outline:1px solid var(--accent-line);outline-offset:-1px}
+.snapshot .output{max-height:none}
+.snapshot-body > .snapshot-raw{border:0;background:transparent;padding:10px 0;margin:0}
+.snapshot-preview > h2:first-child{margin-top:12px}
+.snapshot-preview .mini-table td{max-width:420px}
+.snapshot-preview pre.output{max-height:none;margin:6px 0 10px}
+.snapshot-details{margin:6px 0 12px;border:1px solid var(--line-soft);border-radius:var(--radius);padding:0 10px}
+.snapshot-details > summary{cursor:pointer;padding:6px 0;color:var(--accent-text);font-size:12px}
+.snapshot-details[open] > summary{border-bottom:1px solid var(--line-soft);margin-bottom:6px}
+.snapshot-actions{margin-top:12px}
+.snapshot-hint{margin-right:auto;font-size:11.5px}
+.snapshot-ai{padding-top:10px}
+.snapshot-ai .callout{margin-top:0}
+.snapshot-sent{margin:0 0 12px;font-size:12px}
+.snapshot-sent > summary{cursor:pointer;color:var(--accent-text);line-height:1.6}
+.snapshot-sent pre{margin-top:8px;max-height:280px}
+.snapshot-ai .loading{min-height:120px}
+.snapshot-answer{border:1px solid var(--line);border-radius:var(--radius);padding:4px 14px 10px;background:var(--panel-2)}
+.snapshot-answer-head{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:12px}
+.snapshot-answer-head strong{color:var(--strong)}
+.snapshot-pick{max-width:420px}
+/* The Problems page gains a Snapshot button per row; on narrow windows the row actions wrap. */
+.problem-row{grid-template-columns:12px minmax(140px,1.3fr) minmax(70px,100px) minmax(160px,2.2fr) 44px auto}
+.problem-actions{flex-wrap:wrap;row-gap:2px}
+.problem-actions button{white-space:nowrap}
+@media (max-width:1280px){.problem-actions{max-width:200px}}

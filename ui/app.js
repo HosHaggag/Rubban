@@ -27,6 +27,7 @@ import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
 import { healthTone, healthFacets } from './health.js';
 import { diagnosisCard } from './diagnosis-view.js';
 import { groupProblems, totalsOf } from './problems-group.js';
+import { canSnapshotProblem, snapshotProblem, snapshotCommand } from './snapshot.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -300,6 +301,7 @@ const problemsStore = createProblemStore({
   onChange: () => problemsChanged(),
 });
 let problemsPageRefresh = null;
+hooks.problemsIn = (context, namespace) => problemsStore.all().filter(problem => problem.context === context && problem.namespace === namespace);
 function problemsChanged() {
   const totals = problemsStore.totals();
   const badgeNode = $('#problems-badge');
@@ -343,6 +345,7 @@ function problemsPage() {
       problem.credentials ? button('Sign in again', event => { event.stopPropagation(); signIn(problem.context).catch(error => toast(error.message, true)); }, 'compact') : null,
       problem.resource === 'pods' ? button('Logs', event => { event.stopPropagation(); task(() => podLogsOf(problem))(); }, 'compact quiet') : null,
       problem.resource === 'cluster' ? null : button('Open', event => { event.stopPropagation(); task(() => openProblem(problem))(); }, 'compact quiet'),
+      canSnapshotProblem(problem) ? button('Snapshot', event => { event.stopPropagation(); snapshotProblem(problem); }, 'compact quiet') : null,
       button('Snooze 1 h', event => { event.stopPropagation(); for (const member of problem.members || [problem]) problemsStore.snooze(member.id); }, 'compact quiet'));
     const many = (problem.members?.length || 1) > 1;
     const node = el('div', { class: `problem-row ${problem.severity}`, role: 'button', tabindex: '0', title: many ? `${problem.detail || ''}\n\n${problem.members.map(member => member.name).join('\n')}` : problem.detail },
@@ -1607,6 +1610,7 @@ function commandResults(query) {
   const choices = allNav().filter(item => `${item.title} ${item.tabTitle || ''} ${item.resource || ''} ${item.trail.map(node => node.title).join(' ')}`.toLowerCase().includes(needle));
   $('#command-results').replaceChildren(...choices.slice(0, 80).map(item => button([icon(item.icon || item.trail[0]?.icon || 'overview', 'command-svg'), el('span', { text: item.title }), el('small', { text: item.trail.map(node => node.title).join(' › ') || 'Workspace' })], () => { $('#command-dialog').close(); openView(item.section, item.resource, item.tabTitle || item.title); }, 'command-option')));
   if ('take the tour onboarding help'.includes(needle) && needle) $('#command-results').prepend(button([icon('overview', 'command-svg'), el('span', { text: 'Take the tour' }), el('small', { text: 'Help' })], () => { $('#command-dialog').close(); takeTour(); }, 'command-option'));
+  const snapshotChoice = snapshotCommand(needle, { icon, close: () => $('#command-dialog').close() }); if (snapshotChoice) $('#command-results').prepend(snapshotChoice);
   if (!choices.length && !$('#command-results').children.length && !searchable(query)) $('#command-results').append(el('p', { class: 'list-note', style: 'padding:12px', text: 'No matching views.' }));
   $('#command-results').append(searchHolder);
   scheduleResourceSearch(query);
