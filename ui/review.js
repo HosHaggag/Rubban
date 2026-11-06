@@ -7,8 +7,9 @@ import { parseUnified, renderUnified, fileCount } from './diff.js';
 const objectLabel = object => `${object.kind} ${object.name} (${object.created ? 'create' : object.changed ? 'update' : 'unchanged'})`;
 
 // editor: the textarea. target: { context, namespace }. confirmText/confirmName feed the production
-// guard. onApplied runs after a successful apply. Returns the node to place under the editor.
-export function reviewBar({ editor, target, confirmText, confirmName, onApplied, applyClass = 'primary' }) {
+// guard (destructive: prompt on production clusters). onApplied runs after a successful apply. Returns the
+// node to place under the editor.
+export function reviewBar({ editor, target, confirmText, confirmName, onApplied, applyClass = 'primary', destructive = false }) {
   const results = el('div', { class: 'review-result' });
   const applyButton = el('button', { type: 'button', class: applyClass, disabled: true }, 'Apply');
   let reviewed = null; // { yaml, hash, count }
@@ -46,7 +47,7 @@ export function reviewBar({ editor, target, confirmText, confirmName, onApplied,
 
   applyButton.addEventListener('click', task(async () => {
     if (!reviewed || editor.value !== reviewed.yaml) { stale(); throw new Error('Review the manifest again before applying.'); }
-    if (!await confirmAction(confirmText, confirmName)) return;
+    if (!await confirmAction(confirmText, confirmName, { destructive })) return;
     applyButton.disabled = true;
     const { yaml, hash } = reviewed;
     try {
