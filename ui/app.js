@@ -17,6 +17,7 @@ import { showChart, installDialog, showRelease, releaseMenu, repositoriesPanel }
 import { consumption, resetPrometheusProvider } from './detail-common.js';
 import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErrors } from './argocd.js';
 import { rabbitmqPage } from './rabbitmq.js';
+import { fleetPage } from './fleet.js';
 import * as credentials from './credentials.js';
 import { reviewBar } from './review.js';
 import { alignRows, countDiffering, foldUnchanged, changedKeys, toUnified, renderSideBySide } from './diff.js';
@@ -75,6 +76,7 @@ const ICONS = {
   ai: 'M8 1.5l1.4 3.6 3.6 1.4-3.6 1.4L8 11.5 6.6 7.9 3 6.5l3.6-1.4z M12.5 10.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z',
   settings: 'M10 8a2 2 0 1 1-4 0a2 2 0 1 1 4 0z M12.5 8a4.5 4.5 0 1 1-9 0a4.5 4.5 0 1 1 9 0z M8 1.5v2 M8 12.5v2 M1.5 8h2 M12.5 8h2 M3.4 3.4l1.4 1.4 M11.2 11.2l1.4 1.4 M3.4 12.6l1.4-1.4 M11.2 4.8l1.4-1.4',
   gitops: 'M5.5 3.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M5.5 12.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M13.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M4 5v6 M4 8h6.5',
+  fleet: 'M2.5 2.5h11v11h-11z M2.5 6.2h11 M2.5 9.8h11 M6.2 2.5v11 M9.8 2.5v11',
   cost: 'M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0z M10 5.8C9.5 5.3 8.8 5 8 5c-1.2 0-2 .6-2 1.5S6.8 7.7 8 8s2 .8 2 1.6S9.2 11 8 11c-.9 0-1.6-.3-2.1-.9 M8 3.8V5 M8 11v1.2',
 };
 function icon(name, className = 'nav-svg') {
@@ -99,6 +101,7 @@ const NAV = [
     kube('AppProjects', 'appprojects.argoproj.io'),
   ] },
   leaf('RabbitMQ', 'rabbitmq', undefined, { icon: 'queue' }),
+  leaf('Fleet', 'fleet', undefined, { icon: 'fleet', tabTitle: 'Fleet' }),
   kube('Nodes', 'nodes', { icon: 'nodes' }),
   { id: 'workloads', title: 'Workloads', icon: 'workloads', children: [
     leaf('Overview', 'workloads', undefined, { tabTitle: 'Workloads overview' }),
@@ -421,6 +424,7 @@ function openCompare(left, right) {
   navigation(); renderTabs(); render(); saveTabs();
 }
 hooks.openCompare = openCompare;
+hooks.signIn = signIn;
 function comparePage(tab) {
   if (!tab.compare) return empty('Nothing to compare', 'Open a resource and choose Compare… in its details.');
   const signal = state.pageAbort.signal;
@@ -699,7 +703,7 @@ async function render() {
   const id = ++state.renderId;
   const tab = activeTab();
   $('#status-message').textContent = state.context ? (state.namespace === '*' ? 'all namespaces' : state.namespace) : 'Ready';
-  const globalPages = ['settings', 'ai', 'forwards', 'helm-charts', 'clusters', 'problems'];
+  const globalPages = ['settings', 'ai', 'forwards', 'helm-charts', 'clusters', 'problems', 'fleet'];
   if (!state.context && !globalPages.includes(tab.section)) { $('#main').replaceChildren(welcome()); return; }
   $('#main').replaceChildren(loading());
   try {
@@ -709,6 +713,7 @@ async function render() {
       case 'applications': node = await applicationsPage(); break;
       case 'argocd': node = argoManagerPage({ liveList, liveBadge, consumeResync, refreshView, syncSelected, tickAges }); break;
       case 'rabbitmq': node = rabbitmqPage(); break;
+      case 'fleet': node = fleetPage(); break;
       case 'workloads': node = await workloadsPage(); break;
       case 'resource': node = await resourcePage(tab); break;
       case 'helm-charts': node = await helmChartsPage(); break;

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fleet: what runs where, and where prod and staging differ.** A new **Fleet** view (in the sidebar after RabbitMQ) puts the clusters you have open side by side: a column per cluster, a row per Deployment, StatefulSet, DaemonSet and CronJob, and in each cell the image tag (full image in the tooltip, digests shortened), ready/desired replicas and a health dot. Rows that run different images are marked **drift** with the differing cells highlighted, rows absent from some clusters **missing**, and rows that differ only in replicas **scale differs**; a summary on top counts them, per cluster pair. Helm releases (chart and app version) and Argo CD applications (revision, sync and health) get sections of their own. Filter by text, namespace and kind, show **Only drift**, sort by name or by drift, and choose the clusters with **Clusters…** (remembered). Clicking a cell opens that object in its cluster, **Compare…** opens the Compare tab for the first two clusters that differ, and the matrix refreshes every 30 seconds. A cluster that cannot be read says so in its column header and is left out of the comparison instead of failing the page.
+
 ## 0.13.1: The RabbitMQ console no longer freezes Rubban
 
 - **Opening a RabbitMQ console no longer freezes the window.** The management console signs in and starts with requests that hold its page until the cluster answers, and it ran in the same web view process as Rubban's own page. Every one of those answers came through the cluster tunnel, so the whole window stopped responding, and went blank when it had to repaint, until they arrived; when a tunnel connection stalled, it stayed that way until Rubban was closed. The console now runs in a process of its own: a slow or stuck cluster holds up the console only, and the rest of Rubban keeps working.
