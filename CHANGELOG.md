@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.0: Why it fails, and ten new views
 
 - **Why it is failing, in plain words.** The details of an unhealthy pod or workload open with a **Diagnosis**: what is wrong, the likely cause and the next step as a button. It explains exit codes (1, 137/OOMKilled, 127, 143, 0), image tags that do not exist, unauthorised or unreachable registries, missing ConfigMaps, Secrets and keys, readiness probes aimed at a port the container does not declare, and pods that request more than any node has ("requests 48 cores, the largest node has 12"). **Logs of the crashed run**, **Events** and **Roll back to revision N** are one click away.
 - **What needs attention stands out in every list.** Rows of failing pods, workloads, jobs, nodes and claims carry a red or amber edge, and long lists get **Healthy · Degraded · Failing** chips with counts. Deployments, StatefulSets and DaemonSets have a **Status** in words (Healthy, Rolling out, Degraded, Unavailable, Rollout stuck, Scaled to zero, Paused) instead of condition badges.
