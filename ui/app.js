@@ -24,6 +24,7 @@ import { createProblemStore } from './problems.js';
 import { searchContexts, groupByKind, resultDetail, searchable } from './search.js';
 import { permissionText, scopeText, groupByFeature, asText, summary } from './access.js';
 import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
+import { createCommandBar } from './commands-palette.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -1571,12 +1572,22 @@ function runResourceSearch(query) {
     });
   }
 }
-function commandResults(query) {
+// Ctrl+K commands ("restart storefront", "ns shop") draw their preview above the results; see commands-palette.js.
+function setNamespace(namespace, { quiet = false } = {}) {
+  const select = $('#namespace');
+  if (![...select.options].some(option => option.value === namespace)) select.append(el('option', { value: namespace, text: namespace }));
+  select.value = namespace; state.namespace = namespace; activeTab().namespace = namespace;
+  if (!quiet) { state.selected = null; $('#drawer').classList.add('hidden'); renderTabs(); render(); saveTabs(); }
+}
+const commandBar = createCommandBar({ allNav, namespacesOf: context => cacheOf(context).namespaces, setNamespace });
+function commandResults(input) {
+  const query = commandBar.update(input);
   const needle = query.toLowerCase();
-  const choices = allNav().filter(item => `${item.title} ${item.tabTitle || ''} ${item.resource || ''} ${item.trail.map(node => node.title).join(' ')}`.toLowerCase().includes(needle));
+  const choices = (query || !input.trim() ? allNav() : []).filter(item => `${item.title} ${item.tabTitle || ''} ${item.resource || ''} ${item.trail.map(node => node.title).join(' ')}`.toLowerCase().includes(needle));
   $('#command-results').replaceChildren(...choices.slice(0, 80).map(item => button([icon(item.icon || item.trail[0]?.icon || 'overview', 'command-svg'), el('span', { text: item.title }), el('small', { text: item.trail.map(node => node.title).join(' › ') || 'Workspace' })], () => { $('#command-dialog').close(); openView(item.section, item.resource, item.tabTitle || item.title); }, 'command-option')));
   if ('take the tour onboarding help'.includes(needle) && needle) $('#command-results').prepend(button([icon('overview', 'command-svg'), el('span', { text: 'Take the tour' }), el('small', { text: 'Help' })], () => { $('#command-dialog').close(); takeTour(); }, 'command-option'));
-  if (!choices.length && !$('#command-results').children.length && !searchable(query)) $('#command-results').append(el('p', { class: 'list-note', style: 'padding:12px', text: 'No matching views.' }));
+  if (!choices.length && !$('#command-results').children.length && !searchable(query) && query === input) $('#command-results').append(el('p', { class: 'list-note', style: 'padding:12px', text: 'No matching views.' }));
+  $('#command-results').prepend(commandBar.node);
   $('#command-results').append(searchHolder);
   scheduleResourceSearch(query);
 }
@@ -1655,7 +1666,7 @@ document.querySelectorAll('[data-section]').forEach(node => node.addEventListene
 $('#create-manifest').addEventListener('click', () => createManifest());
 $('#command-open').addEventListener('click', commandPalette);
 $('#command-search').addEventListener('input', event => commandResults(event.target.value));
-$('#command-search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('#command-results button')?.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: event.ctrlKey, metaKey: event.metaKey })); } if (event.key === 'ArrowDown') { event.preventDefault(); $('#command-results button')?.focus(); } });
+$('#command-search').addEventListener('keydown', commandBar.keydown);
 $('#local-terminal').addEventListener('click', () => openTerminal(localShellTarget()));
 $('#drawer-close').addEventListener('click', closeDrawer);
 $('#drawer-back').addEventListener('click', drawerBack);

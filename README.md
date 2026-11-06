@@ -246,10 +246,11 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
    - the Prometheus service used for each cluster (or none);
    - the node shell image;
    - the keyboard shortcuts.
+11. **Do things from Ctrl+K.** Type a command instead of clicking: `restart storefront`, `scale cart to 3`, `logs orders`, `shell cart`, `pf storefront 8080:80`, `rollback storefront`, `delete pod cart-7d9f8-x2k4q`, `cordon worker-2`, `trigger cronjob nightly-report`, `ns shop`, `use staging`, `new tab staging`, `deployments in payments on staging`, `compare storefront with staging`, `theme dark`. A row at the top says exactly what will run, on which cluster (production is marked in red), before you press Enter; a name that only resembles the target is never run by Enter alone. Tab completes, ↑ in an empty box recalls your last 20 commands, and `?` lists them all.
 
 | Shortcut | Windows | macOS |
 |---|---|---|
-| Command palette (views and resources in all open clusters) | Ctrl+K | ⌘K |
+| Command palette (views, resources and commands in all open clusters) | Ctrl+K | ⌘K |
 | Open a search result in a new tab | Ctrl+Enter | ⌘Enter |
 | Cluster overview | Ctrl+1 | ⌘1 |
 | Switch cluster (current tab) | Ctrl+Shift+K | ⌘⇧K |
@@ -354,7 +355,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Feature | Kubernetes permissions |
 |---|---|
 | Browse any view | `list` and `watch` on that resource (`get` for details) |
-| Search (Ctrl+K) | `list` on pods, deployments, statefulsets, daemonsets, jobs, cronjobs, services, ingresses, configmaps, secrets, persistentvolumeclaims, namespaces and nodes, in all namespaces; kinds you cannot list are skipped |
+| Search (Ctrl+K) | `list` on pods, deployments, statefulsets, daemonsets, jobs, cronjobs, services, ingresses, configmaps, secrets, persistentvolumeclaims, namespaces and nodes, in all namespaces; kinds you cannot list are skipped. A Ctrl+K command lists only the kinds its verb works on (`scale` also lists replicasets) and then needs the permission of the action itself, as in the table above |
 | Live CPU and memory | `metrics.k8s.io` `pods` and `nodes`: `list` |
 | Usage for nodes metrics-server misses | `nodes/proxy`: `get` (kubelet summary through the API server) |
 | Usage history and Metrics tabs | `services/proxy`: `get` on the Prometheus service |

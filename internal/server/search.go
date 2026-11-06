@@ -118,7 +118,7 @@ func searchStatus(resource string, item obj) string {
 			}
 		}
 		return fmt.Sprintf("%s %d/%d", phase, ready, len(statuses))
-	case "deployments", "statefulsets":
+	case "deployments", "statefulsets", "replicasets":
 		want := spec["replicas"]
 		if want == nil {
 			want = 1.0
@@ -296,6 +296,11 @@ func (b *Backend) routeSearch(q *request) (any, int, error) {
 	kinds := append([]searchKind{}, searchKinds...)
 	if b.hasArgoCD(q.ctx, kubeContext) {
 		kinds = append(kinds, argoSearchKind)
+	}
+	if kinds, err = narrowSearchKinds(kinds, q.query["kinds"]); err != nil {
+		return nil, 0, err
+	} else if len(kinds) == 0 {
+		return obj{"results": []searchEntry{}, "truncated": false}, 200, nil
 	}
 	lists := make([][]searchEntry, len(kinds))
 	errs := make([]error, len(kinds))
