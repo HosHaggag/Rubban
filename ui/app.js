@@ -34,6 +34,7 @@ import { topologyPage, topologyMap, mapSupported } from './topology.js';
 import { timelinePage, focusTimeline } from './timeline.js';
 import { capacityPage } from './capacity.js';
 import { createCommandBar } from './commands-palette.js';
+import { setupRollouts } from './rollouts.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -1760,7 +1761,7 @@ $('#drawer-back').addEventListener('click', drawerBack);
 document.addEventListener('pointerdown', event => {
   const drawer = $('#drawer');
   if (event.button !== 0 || drawer.classList.contains('hidden') || drawer.contains(event.target)) return;
-  if (event.target.closest('.popup-menu') || document.querySelector('dialog[open]')) return;
+  if (event.target.closest('.popup-menu, .rollout-stack') || document.querySelector('dialog[open]')) return;
   closeDrawer();
 }, { capture: true });
 setupDock();
@@ -1774,5 +1775,6 @@ document.addEventListener('keydown', event => { if ((event.ctrlKey || event.meta
   else if (mod && !event.shiftKey && event.key.toLowerCase() === 'w' && !document.querySelector('dialog[open]')) { event.preventDefault(); closeTab(state.active); }
   else if (event.ctrlKey && (event.key === 'Tab' || event.key === 'PageDown' || event.key === 'PageUp')) { event.preventDefault(); cycleTab(event.shiftKey || event.key === 'PageUp' ? -1 : 1); }
 });
-Object.assign(hooks, { signIn: context => signIn(context).catch(error => toast(error.message, true)), openSwitcher: () => openSwitcher(), takeTour, selectContext, newClusterTab, activateTab, reloadContexts, labelFor, clusterEnv: () => envFor(state.context), showResource, openView, render, afterMutation, openLogs, openTerminal, argoMenu, openExternal: openExternalLink });
+setupRollouts({ liveList });
+Object.assign(hooks, { signIn: context => signIn(context).catch(error => toast(error.message, true)), openSwitcher: () => openSwitcher(), takeTour, selectContext, newClusterTab, activateTab, reloadContexts, labelFor, clusterEnv: context => envFor(context || state.context), showResource, openView, render, afterMutation, openLogs, openTerminal, argoMenu, openExternal: openExternalLink });
 init();

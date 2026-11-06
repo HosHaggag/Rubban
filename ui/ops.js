@@ -26,7 +26,7 @@ export async function deleteMany(resource, items, clear) {
 export function scaleDialog(selected) {
   const current = selected.item.spec?.replicas ?? 1;
   const slider = el('input', { type: 'range', min: 0, max: Math.max(10, current * 2), value: current, 'aria-label': 'Replicas' });
-  const form = makeForm([{ name: 'replicas', label: 'Desired replicas', type: 'number', value: current, min: 0, max: 100000, required: true, help: `Currently ${selected.item.status?.readyReplicas ?? selected.item.status?.replicas ?? 0} ready of ${current} desired.` }], 'Scale', values => post('/api/scale', { ...targetOf(selected), replicas: Number(values.replicas) }), { destructive: values => Number(values.replicas) === 0, confirm: 'Change the desired number of replicas for this workload.', target: selected.name, after: done('Scaled.') });
+  const form = makeForm([{ name: 'replicas', label: 'Desired replicas', type: 'number', value: current, min: 0, max: 100000, required: true, help: `Currently ${selected.item.status?.readyReplicas ?? selected.item.status?.replicas ?? 0} ready of ${current} desired.` }], 'Scale', values => post('/api/scale', { ...targetOf(selected), replicas: Number(values.replicas) }), { destructive: values => Number(values.replicas) === 0, confirm: 'Change the desired number of replicas for this workload.', target: selected.name, after: result => { done('Scaled.')(result); hooks.trackRollout?.(selected, { action: 'scale' }); } });
   const input = form.querySelector('input[name="replicas"]');
   slider.addEventListener('input', () => { input.value = slider.value; });
   input.addEventListener('input', () => { slider.value = input.value; });
@@ -71,6 +71,7 @@ async function waitAndOpen(id, scheme = 'http') {
 export async function restart(selected) {
   if (!await confirmAction('Restart this workload. New pods will roll out according to its update strategy.', selected.name)) return;
   done('Restart requested.')(await post('/api/restart', targetOf(selected)));
+  hooks.trackRollout?.(selected, { action: 'restart' });
 }
 export async function evict(selected) {
   if (!await confirmAction('Evict this pod through the Eviction API. Pod disruption budgets are respected; its controller will usually recreate it elsewhere.', selected.name, { destructive: true })) return;
@@ -101,10 +102,12 @@ export async function setDefaultClass(selected) {
 export async function pauseRollout(selected, paused) {
   if (!await confirmAction(paused ? 'Pause rollouts of this Deployment. Template changes will not roll out until resumed.' : 'Resume rollouts of this Deployment.', selected.name)) return;
   done(paused ? 'Rollout paused.' : 'Rollout resumed.')(await post('/api/patch', { ...targetOf(selected), type: 'merge', patch: { spec: { paused } } }));
+  hooks.trackRollout?.(selected, { action: paused ? 'pause' : 'resume' });
 }
 export async function rollback(selected, revision) {
   if (!await confirmAction(`Roll back ${selected.name} to revision ${revision}. Pods will be replaced with that revision's template.`, selected.name)) return;
   done(`Rolled back to revision ${revision}.`)(await post('/api/rollout-undo', { ...targetOf(selected), revision }));
+  hooks.trackRollout?.(selected, { action: 'rollback', toRevision: revision });
 }
 export function kubeconfigDialog(selected) {
   const result = el('div');
@@ -155,6 +158,7 @@ export function rowMenu(resource, item) {
   }
   if (['deployments', 'statefulsets', 'replicasets', 'replicationcontrollers'].includes(resource)) menu.push({ icon: '⇕', label: 'Scale', action: () => scaleDialog(selected) });
   if (['deployments', 'statefulsets', 'daemonsets'].includes(resource)) menu.push({ icon: '↻', label: 'Restart', action: task(() => restart(selected)) });
+  if (['deployments', 'statefulsets', 'daemonsets'].includes(resource) && hooks.trackRollout) menu.push({ icon: '◔', label: 'Watch rollout', action: () => hooks.trackRollout(selected, { action: 'watch' }) });
   if (resource === 'deployments') menu.push(item.spec?.paused ? { icon: '⏵', label: 'Resume rollout', action: task(() => pauseRollout(selected, false)) } : { icon: '⏸', label: 'Pause rollout', action: task(() => pauseRollout(selected, true)) });
   if (['deployments', 'statefulsets', 'daemonsets', 'replicasets', 'jobs', 'replicationcontrollers'].includes(resource)) menu.push({ icon: '≋', label: 'Logs', action: () => logsFor(selected) });
   if (resource === 'cronjobs') {

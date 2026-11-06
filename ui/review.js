@@ -1,7 +1,7 @@
 // Review → Apply for YAML editors: the exact diff, the objects it touches, kubectl's warnings and the
 // admission result are shown before anything is applied, and Apply stays disabled until a successful
 // review of exactly the text in the editor.
-import { el, button, post, task, toast, confirmAction } from './kit.js';
+import { el, button, post, task, toast, confirmAction, hooks } from './kit.js';
 import { parseUnified, renderUnified, fileCount } from './diff.js';
 
 const objectLabel = object => `${object.kind} ${object.name} (${object.created ? 'create' : object.changed ? 'update' : 'unchanged'})`;
@@ -11,7 +11,7 @@ const objectLabel = object => `${object.kind} ${object.name} (${object.created ?
 export function reviewBar({ editor, target, confirmText, confirmName, onApplied, applyClass = 'primary', destructive = false }) {
   const results = el('div', { class: 'review-result' });
   const applyButton = el('button', { type: 'button', class: applyClass, disabled: true }, 'Apply');
-  let reviewed = null; // { yaml, hash, count }
+  let reviewed = null; // { yaml, hash, count, objects }
 
   const stale = () => { reviewed = null; applyButton.disabled = true; applyButton.textContent = 'Apply'; };
   editor.addEventListener('input', () => { if (reviewed) { stale(); results.prepend(el('div', { class: 'callout info', text: 'The manifest changed since the review. Review it again.' })); } });
@@ -38,7 +38,7 @@ export function reviewBar({ editor, target, confirmText, confirmName, onApplied,
     show(answer);
     if (!answer.error && answer.changed && answer.previewHash) {
       const count = fileCount(parseUnified(answer.diff)) || answer.objects?.length || 1;
-      reviewed = { yaml, hash: answer.previewHash, count };
+      reviewed = { yaml, hash: answer.previewHash, count, objects: answer.objects || [] };
       applyButton.disabled = false;
       applyButton.textContent = `Apply ${count} change${count === 1 ? '' : 's'}`;
     }
@@ -48,13 +48,15 @@ export function reviewBar({ editor, target, confirmText, confirmName, onApplied,
     if (!reviewed || editor.value !== reviewed.yaml) { stale(); throw new Error('Review the manifest again before applying.'); }
     if (!await confirmAction(confirmText, confirmName, { destructive })) return;
     applyButton.disabled = true;
-    const { yaml, hash } = reviewed;
+    const { yaml, hash, objects } = reviewed;
     try {
       const response = await post('/api/apply', { ...target, yaml, previewHash: hash }, { context: target.context });
       results.replaceChildren(el('pre', { class: 'output', text: response.output }));
       toast('Applied.');
       reviewed = null; applyButton.textContent = 'Apply';
       onApplied?.();
+      // Changed Deployments, StatefulSets and DaemonSets get a live rollout card.
+      for (const object of objects) if (object.changed) hooks.trackRollout?.({ context: target.context, namespace: object.namespace || target.namespace, kind: object.kind, name: object.name }, { action: object.created ? 'create' : 'apply' });
     } catch (error) { applyButton.disabled = false; throw error; }
   }));
 

@@ -557,8 +557,8 @@ export function makeForm(specs, submitLabel, submit, extra = {}) {
 // follow the same policy without creating a confirmation dialog.
 // No confirmation dialogs, with one opt-in exception: destructive actions on a cluster tagged
 // "production" ask for the resource name to be typed once.
-export async function confirmAction(message, resourceName, { destructive = false } = {}) {
-  if (!destructive || !resourceName || hooks.clusterEnv?.() !== 'production') return true;
+export async function confirmAction(message, resourceName, { destructive = false, context } = {}) {
+  if (!destructive || !resourceName || hooks.clusterEnv?.(context) !== 'production') return true;
   return new Promise(resolve => {
     const dialog = el('dialog', { class: 'guard-dialog', 'aria-label': 'Confirm destructive action' });
     const input = el('input', { 'aria-label': `Type ${resourceName} to confirm`, autocomplete: 'off', placeholder: resourceName });

@@ -1,0 +1,68 @@
+/* Live rollout tracker (rollouts.js): cards in the bottom-right corner, above the status bar.
+   Colours only from the theme tokens; no animations or transitions. */
+.rollout-stack{position:fixed;right:14px;bottom:34px;z-index:25;width:372px;max-width:calc(100vw - 28px);max-height:calc(100vh - 120px);overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.rollout-stack:empty{display:none}
+/* With the details drawer open on a wide window, the cards move to its left instead of covering it. */
+@media (min-width:1280px){
+  body:has(#drawer:not(.hidden)) .rollout-stack{right:calc(min(640px,72vw) + 14px)}
+}
+/* Toasts stack above the cards. */
+#toast-region{bottom:calc(38px + var(--rollouts-height, 0px))}
+@media (min-width:1280px){
+  body:has(#drawer:not(.hidden)) #toast-region{bottom:38px}
+}
+
+.rollout-card{flex:none;background:var(--raised);border:1px solid var(--line-strong);border-left:3px solid var(--line-strong);border-radius:var(--radius);box-shadow:0 10px 30px var(--shadow-drawer);padding:8px 10px 10px;color:var(--text);font-size:11.5px}
+.rollout-card.tone-info{border-left-color:var(--info)}
+.rollout-card.tone-good{border-left-color:var(--good)}
+.rollout-card.tone-warn{border-left-color:var(--warn)}
+.rollout-card.tone-bad{border-left-color:var(--bad)}
+
+.rollout-head{display:flex;align-items:center;gap:6px;min-width:0}
+.rollout-cluster{display:inline-flex;flex:none}
+.rollout-cluster svg{width:14px;height:14px}
+.rollout-title{flex:1 1 auto;display:block;min-width:0;padding:2px 3px;border:0;background:transparent;color:var(--strong);font:500 12.5px var(--mono);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rollout-title:hover{background:transparent;text-decoration:underline}
+.rollout-sub{margin:0 0 0 23px;color:var(--muted);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rollout-card.collapsed .rollout-sub{display:none}
+.rollout-head .badge{flex:none;padding:1px 6px;font-size:10px}
+.rollout-toggle,.rollout-close{flex:none;padding:2px 5px;font-size:14px}
+.rollout-close{font-size:17px}
+.rollout-toggle:hover,.rollout-close:hover{color:var(--strong);background:var(--hover)}
+
+.rollout-line{display:flex;align-items:center;gap:7px;margin:5px 0 6px 2px;min-width:0}
+.rollout-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--line-strong)}
+.tone-info .rollout-dot{background:var(--info)}
+.tone-good .rollout-dot{background:var(--good)}
+.tone-warn .rollout-dot{background:var(--warn)}
+.tone-bad .rollout-dot{background:var(--bad)}
+.rollout-state{color:var(--strong);font-weight:600;white-space:nowrap}
+.tone-good .rollout-state{color:var(--good)}
+.tone-warn .rollout-state{color:var(--warn-text)}
+.tone-bad .rollout-state{color:var(--bad-text)}
+.rollout-when{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rollout-rev{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+
+.rollout-bar{display:flex;gap:2px;height:6px;border-radius:3px;overflow:hidden;background:var(--track)}
+.rollout-seg{display:block;height:100%;min-width:3px}
+.rollout-seg.ready{background:var(--good)}
+.rollout-seg.notready{background:var(--warn)}
+.rollout-seg.notready.bad{background:var(--bad)}
+.rollout-seg.old{background:var(--line-strong)}
+.rollout-seg.terminating{background:repeating-linear-gradient(135deg,var(--line-strong) 0 3px,var(--track) 3px 6px)}
+
+.rollout-body{margin-top:8px}
+.rollout-counts{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px}
+.rollout-count b{color:var(--strong);font-weight:600;font-family:var(--mono);font-size:10.5px}
+.rollout-count.short b{color:var(--warn-text)}
+.rollout-detail{margin:6px 0 0;line-height:1.5;color:var(--text);overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
+.rollout-detail b{color:var(--strong);font-weight:600}
+.tone-bad .rollout-detail{color:var(--strong)}
+.rollout-hint{margin:4px 0 0;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.rollout-detail code,.rollout-hint code{font-family:var(--mono);font-size:10.5px;background:var(--chip);padding:0 3px;border-radius:3px}
+.rollout-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.rollout-actions .compact{padding:4px 9px;font-size:11px}
+
+.rollout-card.collapsed{padding-bottom:8px}
+.rollout-card.collapsed .rollout-body{display:none}
+.rollout-card.collapsed .rollout-line{margin-bottom:5px}
