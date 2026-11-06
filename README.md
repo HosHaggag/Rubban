@@ -49,6 +49,8 @@ The **Problems** page, the warning button in the left rail, lists crash loops, i
 
 Logs of a Deployment, StatefulSet, DaemonSet or Job follow every pod at once, one colour per pod, and keep up as pods come and go. Filter with **Include** and **Exclude** (plain text or `/regex/`), and **Pause** to read while lines keep arriving.
 
+**Patterns** turns the lines into a short list of templates (`GET /healthz 200 <*> trace=<*>`) with their level, count, pods and a sparkline, marks the ones that are **New** or **Spike**, and puts a banner in the toolbar when one surges. Click a pattern to see only its lines, or **Hide** it to silence the noise. It runs locally, on the lines already in the dock.
+
 ### Live usage everywhere
 
 <img src="docs/images/screenshot-pods.png" alt="The Pods view of a production cluster with live CPU and memory for every pod" width="100%">
@@ -259,7 +261,7 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 | Filter the sidebar | / | / |
 | Close the details panel | Esc | Esc |
 
-Logs opened for a workload follow all of its pods: each pod has its own colour and a chip in the toolbar to hide it, **Include** and **Exclude** accept text or `/regex/`, and **Pause** holds the view while new lines are still collected (up to about 4 MB are kept).
+Logs opened for a workload follow all of its pods: each pod has its own colour and a chip in the toolbar to hide it, **Include** and **Exclude** accept text or `/regex/`, and **Pause** holds the view while new lines are still collected (up to about 4 MB are kept). **Patterns** (next to **Lines**) groups the lines into templates with counts, pods and a trend, and flags new and spiking ones; click a row to filter the lines to it, **Hide** to leave it out, and remove the `pattern:` chip to see everything again.
 
 ---
 

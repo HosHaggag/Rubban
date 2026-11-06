@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Log patterns: thousands of lines as a short list, with what is new or surging.** The log dock has a **Lines | Patterns** switch. Patterns folds the lines into templates such as `GET /healthz 200 <*> trace=<*>`: timestamps, levels and JSON or logfmt wrappers are read, and numbers, durations, ids, IP addresses, pod-name hashes and quoted strings become `<*>`, while HTTP status codes and request routes stay apart (a 503 is never hidden among the 200s). Each pattern shows its level, count and share, the pods that log it in their colours, first and last seen, and a sparkline. A pattern first seen in the last five minutes is marked **New**; one far above its own rate is marked **Spike**, and the toolbar says so ("Spike: `dial tcp <*>: connect: connection refused` ×42 in the last minute", click to jump to it). Click a pattern to show only its lines, **Hide** to drop it from the lines (the health-check noise, say), **Copy** to copy it; sort by count, newest or severity. It all runs in Rubban on the lines the dock already has: nothing is sent anywhere, and 100,000 lines take about half a second.
+
 ## 0.13.1: The RabbitMQ console no longer freezes Rubban
 
 - **Opening a RabbitMQ console no longer freezes the window.** The management console signs in and starts with requests that hold its page until the cluster answers, and it ran in the same web view process as Rubban's own page. Every one of those answers came through the cluster tunnel, so the whole window stopped responding, and went blank when it had to repaint, until they arrived; when a tunnel connection stalled, it stayed that way until Rubban was closed. The console now runs in a process of its own: a slow or stuck cluster holds up the console only, and the rest of Rubban keeps working.
