@@ -1,6 +1,7 @@
 // Shared UI kit: application state, DOM helpers, the local API client, tables, menus and
 // small layout primitives. Feature modules import from here; app.js wires the hooks.
 import { windowRange, covers } from './virtual.js';
+import { explainError } from './errors.js';
 export const $ = (selector, root = document) => root.querySelector(selector);
 const TOKEN = document.querySelector('meta[name="rubban-token"]')?.content || '';
 
@@ -31,7 +32,18 @@ export const output = value => el('pre', { class: 'output', text: typeof value =
 export const info = (message, type = 'info') => el('div', { class: `callout ${type}`, text: message });
 export const loading = (text = 'Loading from your cluster…') => el('div', { class: 'loading' }, text);
 export const mini = (text, trailing) => el('h3', { class: 'mini-title' }, el('span', { text }), trailing);
-export function toast(message, error = false) { const node = el('div', { class: `toast${error ? ' error' : ''}`, text: message }); $('#toast-region').append(node); setTimeout(() => node.remove(), error ? 10000 : 5500); }
+// The same message twice in a row bumps a counter on the toast already shown instead of stacking up.
+export function toast(message, error = false) {
+  const region = $('#toast-region');
+  const same = [...region.children].find(node => node.dataset.message === String(message));
+  if (same) { const count = Number(same.dataset.count || 1) + 1; same.dataset.count = String(count); same.querySelector('.toast-count')?.remove(); same.append(el('b', { class: 'toast-count', text: ` ×${count}` })); clearTimeout(same._timer); same._timer = setTimeout(() => same.remove(), error ? 10000 : 5500); return; }
+  const node = el('div', { class: `toast${error ? ' error' : ''}`, role: error ? 'alert' : 'status', text: message });
+  node.dataset.message = String(message);
+  const close = el('button', { type: 'button', class: 'toast-close', 'aria-label': 'Dismiss', text: '×', onclick: () => node.remove() });
+  node.append(close);
+  while (region.children.length >= 4) region.firstElementChild.remove();
+  region.append(node); node._timer = setTimeout(() => node.remove(), error ? 10000 : 5500);
+}
 export function task(fn) { return async (...args) => { try { await fn(...args); } catch (error) { if (error?.name !== 'AbortError') toast(error.message, true); } }; }
 
 export async function api(path, options = {}) {
@@ -479,10 +491,20 @@ export function table(items, columns, onRow, options = {}) {
 export function page(title, description, controls) { const root = el('div'); root.append(el('div', { class: 'page-heading' }, el('div', {}, el('h1', { text: title }), el('p', { text: description })), controls)); return root; }
 export function panel(title, content, trailing) { return el('section', { class: 'panel' }, title ? el('div', { class: 'panel-heading' }, title, trailing) : null, el('div', { class: 'panel-body' }, content)); }
 export function empty(title, description, action, icon = '◈') { return el('div', { class: 'empty-state' }, el('div', { class: 'empty-icon', text: icon }), el('h2', { text: title }), el('p', { text: description }), action); }
-export function displayError(error, title = 'Unable to load this view') {
-  // A 403 is a permissions question: offer the check that says which permission is missing.
+export function displayError(error, title = '', { context = hooks.labelFor?.(state.context) || state.context } = {}) {
+  // Plain words first, the raw message under "Technical details"; the next step is a button.
+  const explained = explainError(error, { context });
   const retry = button('Try again', () => hooks.render?.(), 'primary compact');
-  return empty(title, error.message, error.status === 403 ? el('div', { class: 'actions' }, retry, button('Check my access', () => hooks.showAccess?.(), 'compact')) : retry, '⚠');
+  const buttons = [retry];
+  if (explained.kind === 'forbidden') buttons.push(button('Check my access', () => hooks.showAccess?.(), 'compact'));
+  if (explained.kind === 'auth' && state.context) buttons.push(button('Sign in again', () => hooks.signIn?.(state.context), 'compact'));
+  if (['unreachable', 'dns', 'timeout', 'tls', 'auth'].includes(explained.kind)) buttons.push(button('Switch cluster', () => hooks.openSwitcher?.(), 'compact'));
+  const code = text => String(text).split(/(`[^`]+`)/).map(part => (part.startsWith('`') && part.endsWith('`') ? el('code', { text: part.slice(1, -1) }) : part));
+  return el('div', { class: `empty-state error-state ${explained.kind}` }, el('div', { class: 'empty-icon', text: explained.kind === 'forbidden' ? '⊘' : '⚠' }),
+    el('h2', { text: explained.kind === 'other' && title ? title : explained.title }), el('p', { text: explained.text }),
+    explained.hints.length ? el('ul', { class: 'error-hints' }, explained.hints.map(hint => el('li', {}, code(hint)))) : null,
+    el('div', { class: 'actions' }, buttons),
+    explained.detail ? el('details', { class: 'error-detail' }, el('summary', { text: 'Technical details' }), el('pre', { text: explained.detail })) : null);
 }
 // Definition list; rows with empty values are omitted, values may be nodes.
 export function dl(pairs) {

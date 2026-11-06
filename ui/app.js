@@ -26,6 +26,7 @@ import { permissionText, scopeText, groupByFeature, asText, summary } from './ac
 import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
 import { healthTone, healthFacets } from './health.js';
 import { diagnosisCard } from './diagnosis-view.js';
+import { explainError, clusterDown } from './errors.js';
 import { groupProblems, totalsOf } from './problems-group.js';
 
 const usage = createUsage({ api });
@@ -77,6 +78,7 @@ const ICONS = {
   alert: 'M8 2l6.5 11.5h-13z M8 6.5v3 M8 11.6h.01',
   ai: 'M8 1.5l1.4 3.6 3.6 1.4-3.6 1.4L8 11.5 6.6 7.9 3 6.5l3.6-1.4z M12.5 10.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z',
   settings: 'M10 8a2 2 0 1 1-4 0a2 2 0 1 1 4 0z M12.5 8a4.5 4.5 0 1 1-9 0a4.5 4.5 0 1 1 9 0z M8 1.5v2 M8 12.5v2 M1.5 8h2 M12.5 8h2 M3.4 3.4l1.4 1.4 M11.2 11.2l1.4 1.4 M3.4 12.6l1.4-1.4 M11.2 4.8l1.4-1.4',
+  sidebar: 'M2.5 3h11v10h-11z M6 3v10 M3.8 5.5h1 M3.8 7.5h1',
   gitops: 'M5.5 3.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M5.5 12.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M13.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M4 5v6 M4 8h6.5',
   cost: 'M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0z M10 5.8C9.5 5.3 8.8 5 8 5c-1.2 0-2 .6-2 1.5S6.8 7.7 8 8s2 .8 2 1.6S9.2 11 8 11c-.9 0-1.6-.3-2.1-.9 M8 3.8V5 M8 11v1.2',
 };
@@ -650,7 +652,8 @@ async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
   $('#context-caption').textContent = name ? (kubeContext?.cluster && kubeContext.cluster !== name ? kubeContext.cluster : 'kubeconfig context') : 'Choose a kubeconfig context';
   $('#context-caption').title = name ? `Context ${name}${kubeContext?.cluster ? ` · cluster ${kubeContext.cluster}` : ''}${kubeContext?.user ? ` · user ${kubeContext.user}` : ''}` : '';
   $('#connection-status').textContent = name ? (cache.namespaces ? 'Cluster connected' : 'Context selected') : 'No cluster selected';
-  $('#connection-dot').classList.toggle('connected', Boolean(name)); $('#workspace-dot').classList.toggle('connected', Boolean(name));
+  // The dot turns green only once the cluster has answered (see the namespaces feed below).
+  for (const dot of [$('#connection-dot'), $('#workspace-dot')]) { dot.classList.remove('connected', 'error'); dot.classList.toggle('pending', Boolean(name)); }
   $('#namespace').replaceChildren(el('option', { value: '*', text: 'All namespaces' }), ...(cache.namespaces || []).map(value => el('option', { value, text: value })));
   $('#namespace').value = namespace;
   renderFavorites();
@@ -662,9 +665,9 @@ async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
   liveList({ resource: 'customresourcedefinitions', context: name, namespace: '*', signal: contextAbort.signal,
     onData: items => { cache.crds = items; problemsStore.sync(state.tabs.map(tab => tab.context)); if (state.context === name) { state.crds = items; navigation(); } },
     onError: () => { if (state.context === name) { state.crds = null; navigation(); } } });
-  let namespacesLoaded = false;
+  let namespacesLoaded = false; let namespacesForbidden = false;
   liveList({ resource: 'namespaces', context: name, namespace: '*', signal: contextAbort.signal,
-    onStatus: value => { if (state.context === name) $('#connection-status').textContent = value.state === 'live' ? 'Cluster connected · live' : value.state === 'reconnecting' ? 'Reconnecting to cluster…' : value.state === 'error' ? 'Connection needs attention' : value.state === 'snapshot' ? 'Cluster connected' : $('#connection-status').textContent; },
+    onStatus: value => { if (namespacesForbidden) return; if (state.context === name) { const up = value.state === 'live'; for (const dot of [$('#connection-dot'), $('#workspace-dot')]) { dot.classList.toggle('connected', up); dot.classList.toggle('error', value.state === 'error'); dot.classList.toggle('pending', !up && value.state !== 'error'); } } if (state.context === name) $('#connection-status').textContent = value.state === 'live' ? 'Cluster connected · live' : value.state === 'reconnecting' ? 'Reconnecting to cluster…' : value.state === 'error' ? 'Connection needs attention' : value.state === 'snapshot' ? 'Cluster connected' : $('#connection-status').textContent; },
     onData: items => {
       if (state.context !== name) return;
       const names = items.map(item => item.metadata.name).sort();
@@ -680,16 +683,24 @@ async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
       if (!namespacesLoaded && (error.status === 403 || /forbidden/i.test(error.message))) {
         const own = state.contexts.find(context => context.name === name)?.namespace;
         if (own) $('#namespace').append(el('option', { value: own, text: own }));
+        namespacesForbidden = true;
         $('#connection-status').textContent = 'Cluster connected · namespace list not permitted';
+        for (const dot of [$('#connection-dot'), $('#workspace-dot')]) { dot.classList.remove('error', 'pending'); dot.classList.add('connected'); }
+        // Namespace-scoped identities cannot read "All namespaces": open their own namespace instead.
+        if (own && state.namespace === '*') { state.namespace = own; activeTab().namespace = own; $('#namespace').value = own; renderTabs(); render(); saveTabs(); toast(`You can read namespace ${own} only, so Rubban opened it.`); }
         return;
       }
-      $('#connection-status').textContent = namespacesLoaded ? 'Connection needs attention' : 'Namespaces unavailable'; toast(error.message, true);
+      for (const dot of [$('#connection-dot'), $('#workspace-dot')]) { dot.classList.remove('connected', 'pending'); dot.classList.add('error'); }
+      const explained = explainError(error, { context: labelFor(name) });
+      $('#connection-status').textContent = clusterDown(explained) ? explained.title : namespacesLoaded ? 'Connection needs attention' : 'Namespaces unavailable';
+      $('#connection-status').title = error.message;
+      toast(clusterDown(explained) ? `${explained.title}. ${explained.text}` : error.message, true);
     } });
   try {
     const discovery = await get('/api/discovery', { context: name }, { signal: contextAbort.signal });
     if (state.context !== name || contextAbort.signal.aborted) return;
     cache.discovery = discovery.resources || []; state.discovery = cache.discovery; navigation(); if (activeTab().section === 'discovery') render();
-  } catch (error) { if (!contextAbort.signal.aborted) toast(`Discovery: ${error.message}`, true); }
+  } catch (error) { if (!contextAbort.signal.aborted && !clusterDown(explainError(error))) toast(`Discovery: ${error.message}`, true); }
 }
 function welcome() {
   const root = el('div', { class: 'welcome' }, el('span', { class: 'welcome-tag' }, '◈  RUBBAN · رُبّان'), el('h1', { text: state.contexts.length ? 'Pick a cluster to start.' : 'Your clusters. A clearer perspective.' }), el('p', { text: state.contexts.length ? `Rubban found ${state.contexts.length} context${state.contexts.length === 1 ? '' : 's'} in your kubeconfig. It connects only to the one you open, and never changes your kubeconfig. ${MOD}+T opens another cluster in a new tab.` : 'Explore Kubernetes, troubleshoot workloads, and manage your infrastructure from one local desktop workspace. Add a kubeconfig to get started.' }));
@@ -816,7 +827,7 @@ async function overview() {
   const errors = new Map();
   const cardDefs = [['nodes', 'Nodes', '⬡'], ['pods', 'Pods', '▦'], ['cpu', 'CPU in use', '◔'], ['memory', 'Memory in use', '◑'], ['issues', 'Issues', '⚑']];
   const cards = Object.fromEntries(cardDefs.map(([id, label, glyph]) => { const value = el('div', { class: 'card-value', text: '—' }); const detail = el('div', { class: 'card-detail', text: 'Loading…' }); return [id, { node: el('div', { class: 'card' }, el('div', { class: 'card-label' }, label, el('span', { class: 'card-icon', text: glyph })), value, detail), value, detail }]; }));
-  const notes = el('div');
+  const notes = el('div', { class: 'overview-notes' });
   const usagePanel = el('div', { class: 'usage-columns' }, loading());
   const historyHost = el('div');
   const topCtx = pageContext(usage);
@@ -831,6 +842,9 @@ async function overview() {
     { id: 'namespace', title: 'Namespace', render: row => row.namespace || '—', sort: row => row.namespace },
     { id: 'age', title: 'Age', render: row => age(row.time), sort: row => -(new Date(row.time).getTime() || 0) },
   ], row => showResource(row.item, row.resource), { id: 'overview:issues', key: row => row.key, stamp: row => `${row.message}|${row.time}`, pending: true, empty: 'No issues: all nodes are ready, no pods are failing and there are no warning events.', placeholder: 'Filter issues…', searchText: row => `${row.message} ${row.kind} ${row.name} ${row.namespace}` });
+  // The headline numbers open the view behind them.
+  const cardTargets = { nodes: () => openView('resource', 'nodes', 'Nodes'), pods: () => openView('resource', 'pods', 'Pods'), issues: () => openView('problems', undefined, 'Problems') };
+  for (const [id, go] of Object.entries(cardTargets)) { const node = cards[id]?.node; if (!node) continue; node.classList.add('card-link'); node.tabIndex = 0; node.setAttribute('role', 'link'); node.title = 'Open'; node.addEventListener('click', go); node.addEventListener('keydown', event => { if (event.key === 'Enter') go(); }); }
   root.append(el('div', { class: 'cards' }, Object.values(cards).map(card => card.node)), notes,
     el('div', { class: 'section-label' }, el('h2', { text: 'Cluster usage' }), el('span', { text: 'Live usage from metrics.k8s.io; requests and limits from pod specs' })), panel('', usagePanel),
     el('div', { class: 'section-label' }, el('h2', { text: 'Usage over time' })), historyHost,
@@ -894,15 +908,20 @@ async function overview() {
       setCard('issues', issues.length, `${issues.filter(i => i.level === 'bad').length} critical · ${events.filter(e => e.type === 'Warning').length} warning events`);
       issuesView.update(issues);
     } else if (errors.has('events')) setCard('issues', null, 'Events unavailable');
-    const messages = [...errors.values()];
-    notes.replaceChildren(...(messages.length ? [info(messages.join(' · '))] : []));
+    // A cluster that cannot be reached at all gets one clear explanation instead of half-empty panels.
+    const fatal = !nodes && !pods ? errors.get('pods') || errors.get('nodes') : null;
+    const down = fatal && clusterDown(explainError(fatal, { context: labelFor(state.context) }));
+    root.classList.toggle('cluster-down', Boolean(down));
+    if (down) { notes.replaceChildren(displayError(fatal, '', { context: labelFor(state.context) })); return; }
+    const messages = [...errors.entries()].map(([resource, error]) => `${resource}: ${explainError(error).title === 'Something went wrong' ? error.message : explainError(error, { context: labelFor(state.context) }).title}`);
+    notes.replaceChildren(...(messages.length ? [info(messages.join(' · '), 'warn')] : []));
   }
   let pending = null;
   const schedule = () => { if (!pending) pending = setTimeout(() => { pending = null; update(); }, 250); };
   signal.addEventListener('abort', () => clearTimeout(pending), { once: true });
   roleFilter.addEventListener('change', () => { writeStore('rubban.overview.nodes', roleFilter.value); historyKey = ''; update(); });
   const resync = consumeResync();
-  const subscribe = (resource, onItems) => liveList({ resource, namespace: '*', signal, resync, onStatus: value => status.track(resource, value), onError: error => { errors.set(resource, `${resource}: ${error.message}`); schedule(); }, onData: (items, change) => { errors.delete(resource); onItems(items, change); schedule(); } });
+  const subscribe = (resource, onItems) => liveList({ resource, namespace: '*', signal, resync, onStatus: value => status.track(resource, value), onError: error => { errors.set(resource, error); schedule(); }, onData: (items, change) => { errors.delete(resource); onItems(items, change); schedule(); } });
   subscribe('nodes', items => { data.nodes = items; });
   subscribe('pods', (items, change) => { data.pods = items; syncSelected(change); });
   subscribe('events', items => { data.events = items; });
@@ -1537,7 +1556,7 @@ async function settingsPage() {
 }
 // ---- Keyboard shortcuts: the list in Settings and the "?" overlay -------------------------------
 const SHORTCUTS = () => [
-  ['Navigate', [[`${MOD}+K`, 'Command palette: views, resources in every open cluster'], [`${MOD}+Enter`, 'Open a search result in a new tab'], [`${MOD}+Shift+K`, 'Switch the cluster of this tab'], [`${MOD}+1`, 'Cluster overview'], ['/', 'Filter the sidebar'], ['?', 'Show these shortcuts']]],
+  ['Navigate', [[`${MOD}+K`, 'Command palette: views, resources in every open cluster'], [`${MOD}+Enter`, 'Open a search result in a new tab'], [`${MOD}+Shift+K`, 'Switch the cluster of this tab'], [`${MOD}+1`, 'Cluster overview'], ['/', 'Filter the sidebar'], [`${MOD}+B`, 'Hide or show the sidebar'], ['?', 'Show these shortcuts']]],
   ['Tabs', [[`${MOD}+T`, 'Open a cluster in a new tab'], [`${MOD}+W`, 'Close the tab'], ['Ctrl+Tab', 'Next tab'], ['Ctrl+Shift+Tab', 'Previous tab'], ['Middle-click', 'Close a tab · open a view in a new tab']]],
   ['Lists and details', [['Enter', 'Open the focused row'], ['Right-click', 'Row actions'], ['Esc', 'Close the details panel or a dialog'], ['← →', 'Move between detail tabs']]],
   ['Terminal and logs', [[`${MOD}+\``, 'Show or hide the terminal dock']]],
@@ -1684,6 +1703,11 @@ $('#reload-contexts').addEventListener('click', task(reloadContexts));
 $('#workspace-button').addEventListener('click', () => openView('overview'));
 document.querySelectorAll('[data-section]').forEach(node => node.addEventListener('click', () => openView(node.dataset.section)));
 $('#create-manifest').addEventListener('click', () => createManifest());
+// The sidebar folds away (Ctrl+B) to give lists the whole window; the choice is remembered.
+function setSidebar(collapsed) { $('#app').classList.toggle('sidebar-collapsed', collapsed); $('#sidebar-toggle').setAttribute('aria-expanded', String(!collapsed)); writeStore('rubban.sidebarCollapsed', collapsed); }
+setSidebar(Boolean(readStore('rubban.sidebarCollapsed', false)));
+$('#sidebar-toggle').addEventListener('click', () => setSidebar(!$('#app').classList.contains('sidebar-collapsed')));
+document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'b' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '') && !document.activeElement?.closest?.('.xterm')) { event.preventDefault(); setSidebar(!$('#app').classList.contains('sidebar-collapsed')); } });
 $('#command-open').addEventListener('click', commandPalette);
 $('#command-search').addEventListener('input', event => commandResults(event.target.value));
 $('#command-search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('#command-results button')?.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: event.ctrlKey, metaKey: event.metaKey })); } if (event.key === 'ArrowDown') { event.preventDefault(); $('#command-results button')?.focus(); } });
@@ -1709,5 +1733,5 @@ document.addEventListener('keydown', event => { if ((event.ctrlKey || event.meta
   else if (mod && !event.shiftKey && event.key.toLowerCase() === 'w' && !document.querySelector('dialog[open]')) { event.preventDefault(); closeTab(state.active); }
   else if (event.ctrlKey && (event.key === 'Tab' || event.key === 'PageDown' || event.key === 'PageUp')) { event.preventDefault(); cycleTab(event.shiftKey || event.key === 'PageUp' ? -1 : 1); }
 });
-Object.assign(hooks, { takeTour, selectContext, newClusterTab, activateTab, reloadContexts, labelFor, clusterEnv: () => envFor(state.context), showResource, openView, render, afterMutation, openLogs, openTerminal, argoMenu, openExternal: openExternalLink });
+Object.assign(hooks, { signIn: context => signIn(context).catch(error => toast(error.message, true)), openSwitcher: () => openSwitcher(), takeTour, selectContext, newClusterTab, activateTab, reloadContexts, labelFor, clusterEnv: () => envFor(state.context), showResource, openView, render, afterMutation, openLogs, openTerminal, argoMenu, openExternal: openExternalLink });
 init();
