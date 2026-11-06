@@ -17,6 +17,7 @@ import { showChart, installDialog, showRelease, releaseMenu, repositoriesPanel }
 import { consumption, resetPrometheusProvider } from './detail-common.js';
 import { argoDetails, argoManagerPage, appMenu as argoMenu, appErrors as argoErrors } from './argocd.js';
 import { rabbitmqPage } from './rabbitmq.js';
+import { fleetPage } from './fleet.js';
 import * as credentials from './credentials.js';
 import { reviewBar } from './review.js';
 import { alignRows, countDiffering, foldUnchanged, changedKeys, toUnified, renderSideBySide } from './diff.js';
@@ -85,6 +86,7 @@ const ICONS = {
   sidebar: 'M2.5 3h11v10h-11z M6 3v10 M3.8 5.5h1 M3.8 7.5h1',
   gitops: 'M5.5 3.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M5.5 12.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M13.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M4 5v6 M4 8h6.5',
   timeline: 'M2.6 8a5.4 5.4 0 1 0 1.6-3.8 M2.2 2.4v2.9h2.9 M8 5v3.2l2.2 1.4',
+  fleet: 'M2.5 2.5h11v11h-11z M2.5 6.2h11 M2.5 9.8h11 M6.2 2.5v11 M9.8 2.5v11',
   cost: 'M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0z M10 5.8C9.5 5.3 8.8 5 8 5c-1.2 0-2 .6-2 1.5S6.8 7.7 8 8s2 .8 2 1.6S9.2 11 8 11c-.9 0-1.6-.3-2.1-.9 M8 3.8V5 M8 11v1.2',
 };
 function icon(name, className = 'nav-svg') {
@@ -110,6 +112,7 @@ const NAV = [
     kube('AppProjects', 'appprojects.argoproj.io'),
   ] },
   leaf('RabbitMQ', 'rabbitmq', undefined, { icon: 'queue' }),
+  leaf('Fleet', 'fleet', undefined, { icon: 'fleet', tabTitle: 'Fleet' }),
   kube('Nodes', 'nodes', { icon: 'nodes' }),
   leaf('Advisor', 'advisor', undefined, { icon: 'security' }),
   { id: 'workloads', title: 'Workloads', icon: 'workloads', children: [
@@ -449,6 +452,7 @@ function openCompare(left, right) {
   navigation(); renderTabs(); render(); saveTabs();
 }
 hooks.openCompare = openCompare;
+hooks.signIn = signIn;
 function comparePage(tab) {
   if (!tab.compare) return empty('Nothing to compare', 'Open a resource and choose Compare… in its details.');
   const signal = state.pageAbort.signal;
@@ -740,7 +744,7 @@ async function render() {
   const id = ++state.renderId;
   const tab = activeTab();
   $('#status-message').textContent = state.context ? (state.namespace === '*' ? 'all namespaces' : state.namespace) : 'Ready';
-  const globalPages = ['settings', 'ai', 'forwards', 'helm-charts', 'clusters', 'problems'];
+  const globalPages = ['settings', 'ai', 'forwards', 'helm-charts', 'clusters', 'problems', 'fleet'];
   if (!state.context && !globalPages.includes(tab.section)) { $('#main').replaceChildren(welcome()); return; }
   $('#main').replaceChildren(loading());
   try {
@@ -751,6 +755,7 @@ async function render() {
       case 'topology': node = topologyPage({ liveList, liveBadge, consumeResync, refreshView }); break;
       case 'argocd': node = argoManagerPage({ liveList, liveBadge, consumeResync, refreshView, syncSelected, tickAges }); break;
       case 'rabbitmq': node = rabbitmqPage(); break;
+      case 'fleet': node = fleetPage(); break;
       case 'workloads': node = await workloadsPage(); break;
       case 'resource': node = await resourcePage(tab); break;
       case 'helm-charts': node = await helmChartsPage(); break;
