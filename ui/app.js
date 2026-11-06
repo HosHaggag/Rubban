@@ -32,6 +32,7 @@ import { groupProblems, totalsOf } from './problems-group.js';
 import { advisorPage } from './advisor.js';
 import { topologyPage, topologyMap, mapSupported } from './topology.js';
 import { timelinePage, focusTimeline } from './timeline.js';
+import { capacityPage } from './capacity.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -87,6 +88,7 @@ const ICONS = {
   gitops: 'M5.5 3.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M5.5 12.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M13.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M4 5v6 M4 8h6.5',
   timeline: 'M2.6 8a5.4 5.4 0 1 0 1.6-3.8 M2.2 2.4v2.9h2.9 M8 5v3.2l2.2 1.4',
   fleet: 'M2.5 2.5h11v11h-11z M2.5 6.2h11 M2.5 9.8h11 M6.2 2.5v11 M9.8 2.5v11',
+  capacity: 'M2.5 2.5h11v11h-11z M8.5 2.5v11 M2.5 9h6 M8.5 6.5h5 M5.5 9v4.5',
   cost: 'M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0z M10 5.8C9.5 5.3 8.8 5 8 5c-1.2 0-2 .6-2 1.5S6.8 7.7 8 8s2 .8 2 1.6S9.2 11 8 11c-.9 0-1.6-.3-2.1-.9 M8 3.8V5 M8 11v1.2',
 };
 function icon(name, className = 'nav-svg') {
@@ -140,6 +142,7 @@ const NAV = [
     kube('Persistent Volume Claims', 'persistentvolumeclaims'), kube('Persistent Volumes', 'persistentvolumes'), kube('Storage Classes', 'storageclasses'),
   ] },
   kube('Namespaces', 'namespaces', { icon: 'namespaces' }),
+  leaf('Capacity', 'capacity', undefined, { icon: 'capacity', tabTitle: 'Capacity' }),
   leaf('Events', 'events', undefined, { icon: 'events' }),
   leaf('Timeline', 'timeline', undefined, { icon: 'timeline' }),
   { id: 'helm', title: 'Helm', icon: 'helm', children: [leaf('Charts', 'helm-charts', undefined, { tabTitle: 'Helm Charts' }), leaf('Releases', 'helm', undefined, { tabTitle: 'Helm Releases' })] },
@@ -756,6 +759,7 @@ async function render() {
       case 'argocd': node = argoManagerPage({ liveList, liveBadge, consumeResync, refreshView, syncSelected, tickAges }); break;
       case 'rabbitmq': node = rabbitmqPage(); break;
       case 'fleet': node = fleetPage(); break;
+      case 'capacity': node = capacityPage({ liveList, liveBadge, consumeResync, refreshView }); break;
       case 'workloads': node = await workloadsPage(); break;
       case 'resource': node = await resourcePage(tab); break;
       case 'helm-charts': node = await helmChartsPage(); break;
