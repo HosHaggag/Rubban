@@ -41,6 +41,10 @@ The **Problems** page, the warning button in the left rail, lists crash loops, i
 
 The **Timeline** view answers the first question of every incident: rollouts (with the image, env and resource changes and a diff of the pod template), ConfigMap and Secret writes, restarts, warnings, scaling, Jobs, Helm releases, Argo CD syncs and node changes of the current cluster and namespace in one chronological list, with a density strip to jump through the last hour, day or week. Changes made shortly before a burst of warnings or restarts on a workload they touch are marked **likely related**, and **What changed?** on a problem opens the 30 minutes before it started.
 
+### An incident report in one click
+
+**Snapshot** in the details of a pod or workload, on a Problems row, or **Snapshot namespace** in Ctrl+K, collects Rubban's diagnosis, pod and container states with the last exit codes, events (warnings first), the logs of every container and of the run that crashed, the owner chain, related Services, ConfigMaps and Secrets (names only), nodes and the namespace's open problems into one Markdown report. Secret values are never included and anything that looks like a token, password or key is replaced with `‹redacted›`. Copy it, save it, or **Ask AI** for a root-cause draft from your own AI CLI.
+
 ### Production and staging, side by side
 
 <img src="docs/images/screenshot-compare.png" alt="The storefront Deployment compared between a production and a staging cluster, with the replica count, image tag and an added feature flag marked" width="100%">
@@ -278,6 +282,8 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 
 Logs opened for a workload follow all of its pods: each pod has its own colour and a chip in the toolbar to hide it, **Include** and **Exclude** accept text or `/regex/`, and **Pause** holds the view while new lines are still collected (up to about 4 MB are kept). **Patterns** (next to **Lines**) groups the lines into templates with counts, pods and a trend, and flags new and spiking ones; click a row to filter the lines to it, **Hide** to leave it out, and remove the `pattern:` chip to see everything again.
 
+During an incident, **Snapshot** in a pod's or workload's details, on a Problems row, or *Snapshot namespace* in Ctrl+K builds one redacted Markdown report: diagnosis, pods, last terminations, events, logs (including the run that crashed), related objects, nodes and open problems. **Copy Markdown** or **Save as file** for a ticket or a chat; **Ask AI** sends the same redacted report to the AI CLI chosen in Settings and shows its root-cause draft next to exactly what was sent.
+
 ---
 
 ## 5. Build from source (WSL, Linux, macOS or Windows)
@@ -385,6 +391,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Compare across clusters | `get` on the resource in each cluster (Secrets are refused) |
 | Timeline | `list` and `watch` on events, pods, replicasets, deployments, statefulsets, daemonsets, controllerrevisions, jobs, cronjobs, horizontalpodautoscalers and nodes (and Argo CD applications); `list` on configmaps and secrets (metadata only: names and write times, never values); Helm reads release history with the same permissions as `helm history`. Sources you cannot read are named on the page and skipped |
 | Fleet | `list` on deployments, statefulsets, daemonsets and cronjobs in all namespaces of each cluster; Helm releases need what `helm list` needs (Secrets in the release namespaces), Argo CD sections `list` on `applications.argoproj.io`. Kinds you cannot list show as unreadable in that cluster's column |
+| Incident snapshot | `get` on the object and its owners; `list` pods, events, services, configmaps, secrets (names only are used), ingresses and horizontalpodautoscalers in the namespace, and nodes; `pods/log`: `get`. A part you may not read is noted in the report and the rest is still collected |
 | Review before apply | `create`/`patch` with dry-run on the resource (the review asks the API server to validate the manifest without storing it) |
 | Rollout tracker | `list` and `watch` on the workload's kind, `pods` and `replicasets` (Deployments) or `controllerrevisions` (StatefulSets, DaemonSets) in its namespace; **Undo** and **Pause** need `patch` on the workload |
 
