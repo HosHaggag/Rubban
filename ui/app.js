@@ -30,6 +30,7 @@ import { explainError, clusterDown } from './errors.js';
 import { groupProblems, totalsOf } from './problems-group.js';
 import { advisorPage } from './advisor.js';
 import { topologyPage, topologyMap, mapSupported } from './topology.js';
+import { timelinePage, focusTimeline } from './timeline.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -83,6 +84,7 @@ const ICONS = {
   settings: 'M10 8a2 2 0 1 1-4 0a2 2 0 1 1 4 0z M12.5 8a4.5 4.5 0 1 1-9 0a4.5 4.5 0 1 1 9 0z M8 1.5v2 M8 12.5v2 M1.5 8h2 M12.5 8h2 M3.4 3.4l1.4 1.4 M11.2 11.2l1.4 1.4 M3.4 12.6l1.4-1.4 M11.2 4.8l1.4-1.4',
   sidebar: 'M2.5 3h11v10h-11z M6 3v10 M3.8 5.5h1 M3.8 7.5h1',
   gitops: 'M5.5 3.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M5.5 12.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M13.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0z M4 5v6 M4 8h6.5',
+  timeline: 'M2.6 8a5.4 5.4 0 1 0 1.6-3.8 M2.2 2.4v2.9h2.9 M8 5v3.2l2.2 1.4',
   cost: 'M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0z M10 5.8C9.5 5.3 8.8 5 8 5c-1.2 0-2 .6-2 1.5S6.8 7.7 8 8s2 .8 2 1.6S9.2 11 8 11c-.9 0-1.6-.3-2.1-.9 M8 3.8V5 M8 11v1.2',
 };
 function icon(name, className = 'nav-svg') {
@@ -136,6 +138,7 @@ const NAV = [
   ] },
   kube('Namespaces', 'namespaces', { icon: 'namespaces' }),
   leaf('Events', 'events', undefined, { icon: 'events' }),
+  leaf('Timeline', 'timeline', undefined, { icon: 'timeline' }),
   { id: 'helm', title: 'Helm', icon: 'helm', children: [leaf('Charts', 'helm-charts', undefined, { tabTitle: 'Helm Charts' }), leaf('Releases', 'helm', undefined, { tabTitle: 'Helm Releases' })] },
   { id: 'access', title: 'Access Control', icon: 'access', children: [
     kube('Service Accounts', 'serviceaccounts'), kube('Cluster Roles', 'clusterroles'), kube('Roles', 'roles'),
@@ -322,6 +325,14 @@ async function openProblem(problem) {
   if (problem.context !== state.context) await selectContext(problem.context, { namespace: '*' });
   if (problem.resource !== 'cluster') showResource({ metadata: { name: problem.name, namespace: problem.namespace } }, problem.resource);
 }
+// The timeline of the problem's cluster and namespace, focused on the 30 minutes before it started.
+async function whatChanged(problem) {
+  const namespace = problem.namespace || '*';
+  if (problem.context !== state.context) await selectContext(problem.context, { namespace });
+  else if (state.namespace !== namespace) { state.namespace = namespace; $('#namespace').value = namespace; }
+  focusTimeline(problem);
+  openView('timeline', undefined, 'Timeline', { newTab: true });
+}
 async function podLogsOf(problem) {
   if (problem.context !== state.context) await selectContext(problem.context, { namespace: '*' });
   const item = await get('/api/resource', { context: problem.context, namespace: problem.namespace, resource: 'pods', name: problem.name });
@@ -350,6 +361,7 @@ function problemsPage() {
       problem.credentials ? button('Sign in again', event => { event.stopPropagation(); signIn(problem.context).catch(error => toast(error.message, true)); }, 'compact') : null,
       problem.resource === 'pods' ? button('Logs', event => { event.stopPropagation(); task(() => podLogsOf(problem))(); }, 'compact quiet') : null,
       problem.resource === 'cluster' ? null : button('Open', event => { event.stopPropagation(); task(() => openProblem(problem))(); }, 'compact quiet'),
+      problem.resource === 'cluster' ? null : el('button', { type: 'button', class: 'compact quiet tl-problem-action', title: 'What changed? The timeline of the 30 minutes before this problem started', 'aria-label': 'What changed?', onclick: event => { event.stopPropagation(); task(() => whatChanged(problem))(); } }, icon('timeline', 'ui-svg'), el('span', { class: 'tl-problem-label', text: 'What changed?' })),
       button('Snooze 1 h', event => { event.stopPropagation(); for (const member of problem.members || [problem]) problemsStore.snooze(member.id); }, 'compact quiet'));
     const many = (problem.members?.length || 1) > 1;
     const node = el('div', { class: `problem-row ${problem.severity}`, role: 'button', tabindex: '0', title: many ? `${problem.detail || ''}\n\n${problem.members.map(member => member.name).join('\n')}` : problem.detail },
@@ -743,6 +755,7 @@ async function render() {
       case 'resource': node = await resourcePage(tab); break;
       case 'helm-charts': node = await helmChartsPage(); break;
       case 'events': node = await eventPage(); break;
+      case 'timeline': node = timelinePage(tab, { liveList, liveBadge, consumeResync, refreshView, showResource }); break;
       case 'metrics': node = await metricsPage(); break;
       case 'helm': node = await helmPage(); break;
       case 'forwards': node = await forwardsPage(); break;

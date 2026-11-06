@@ -914,3 +914,6 @@ tr.tone-bad.clickable:hover td{background:color-mix(in srgb,var(--bad) 12%,var(-
 .card.card-link{cursor:pointer}
 .card.card-link:hover{border-color:var(--accent-line);background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
 .card.card-link:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* Room for the "What changed?" action on problem rows. */
+.problem-row{grid-template-columns:12px minmax(170px,1.2fr) 100px minmax(200px,2fr) 44px 340px}
+@media (max-width:1300px){.problem-row{grid-template-columns:12px minmax(150px,1.2fr) 90px minmax(160px,2fr) 40px 230px}}

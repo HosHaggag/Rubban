@@ -37,6 +37,10 @@ Rubban (رُبّان) is Arabic for a ship's captain, a nod to Kubernetes, which
 
 The **Problems** page, the warning button in the left rail, lists crash loops, image pull errors, out-of-memory kills, pods that cannot be scheduled or never become ready, workloads below their replica count, failed Jobs, pending volume claims, unhealthy nodes, and Argo CD applications that are degraded or out of sync, for every cluster that has a tab open. A row opens the resource in the right cluster, opens its logs, or snoozes it for an hour.
 
+### What changed?
+
+The **Timeline** view answers the first question of every incident: rollouts (with the image, env and resource changes and a diff of the pod template), ConfigMap and Secret writes, restarts, warnings, scaling, Jobs, Helm releases, Argo CD syncs and node changes of the current cluster and namespace in one chronological list, with a density strip to jump through the last hour, day or week. Changes made shortly before a burst of warnings or restarts on a workload they touch are marked **likely related**, and **What changed?** on a problem opens the 30 minutes before it started.
+
 ### Production and staging, side by side
 
 <img src="docs/images/screenshot-compare.png" alt="The storefront Deployment compared between a production and a staging cluster, with the replica count, image tag and an added feature flag marked" width="100%">
@@ -234,11 +238,12 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 3. **Use the sidebar:**
    - Overview, Applications, Topology, Argo CD, RabbitMQ and Nodes;
    - Workloads, Config, Network and Storage;
-   - Namespaces, Events, Helm and Access Control;
+   - Namespaces, Events, Timeline, Helm and Access Control;
    - Flux, Gateway API and Custom Resources.
    Ctrl-click (⌘-click on macOS) opens a view in a new tab.
 4. **Tabs work like a browser's.** Each tab remembers its cluster, namespace and view, so two clusters can be open side by side. **+** at the end of the tab bar (or Ctrl+T) opens another cluster in a new tab; the selector at the top left switches the *current* tab's cluster. Last session's tabs come back on the next launch.
-5. **Problems.** The triangle button at the bottom of the left rail lists what is wrong in every cluster you have open, with a red or amber count on the button and a dot on each affected cluster's tab. Click a row to open the resource (switching the current tab to that cluster), or use **Logs** and **Snooze 1 h**. Closing the last tab of a cluster removes its problems.
+5. **Problems.** The triangle button at the bottom of the left rail lists what is wrong in every cluster you have open, with a red or amber count on the button and a dot on each affected cluster's tab. Click a row to open the resource (switching the current tab to that cluster), or use **Logs**, **What changed?** (the Timeline of the 30 minutes before the problem started) and **Snooze 1 h**. Closing the last tab of a cluster removes its problems.
+   **Timeline** in the sidebar lists what changed in the tab's cluster and namespace, newest first. Pick 1h, 6h, 24h or 7d, click a bar of the strip to jump there, toggle categories with the chips (Alt-click shows one category only), and click an entry for its detail or the pod-template diff. **Likely related only** keeps the changes that came shortly before warnings or restarts on a workload they affect, and those warnings.
 6. **Compare.** **Compare…** in a resource's details shows the same resource on two sides, for example prod and staging, in a new tab: cleaned, sorted YAML with the differing lines marked (**Hide unchanged**, **Include status**, **Swap sides**, **Copy diff**). Secrets are never compared.
 7. **Create and edit with a review.** In **Create** and in a resource's **YAML** tab, press **Review** to see exactly what would change (diff, objects, warnings, and the cluster's own validation or admission errors) before **Apply** unlocks. Editing the text after a review locks it again.
 8. **Expired credentials show up where you look.** A cluster whose credentials expired gets an amber ring on its tab, in the selector and on the hotbar, and a banner with **Sign in again**. It opens the terminal dock running the one command that fixes it (`gcloud auth login`, `az login` or `aws sso login --profile …`, chosen from the cluster's kubeconfig); when the login finishes, the views reconnect.
@@ -368,6 +373,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Argo CD › Manage | `applications.argoproj.io`: `get`, `list`, `watch`, `patch`, `delete` in the Argo CD namespace |
 | Edit, scale, restart, delete | `patch`, `update` or `delete` on the resource |
 | Compare across clusters | `get` on the resource in each cluster (Secrets are refused) |
+| Timeline | `list` and `watch` on events, pods, replicasets, deployments, statefulsets, daemonsets, controllerrevisions, jobs, cronjobs, horizontalpodautoscalers and nodes (and Argo CD applications); `list` on configmaps and secrets (metadata only: names and write times, never values); Helm reads release history with the same permissions as `helm history`. Sources you cannot read are named on the page and skipped |
 | Review before apply | `create`/`patch` with dry-run on the resource (the review asks the API server to validate the manifest without storing it) |
 
 **Settings › Access** checks all of these for you: it asks the cluster what your identity may do in the namespace you choose, and **Copy as text** gives you something to send to an administrator.

@@ -1,0 +1,102 @@
+/* Change timeline ("What changed?"). Colours only from the tokens in style.css; no animations. */
+.timeline-page{max-width:1500px}
+.tl-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:10px}
+.tl-ranges,.tl-cats{display:flex;flex-wrap:wrap;gap:5px}
+.tl-ranges{padding-right:12px;border-right:1px solid var(--line)}
+.tl-filters{display:flex;align-items:center;gap:12px;margin-left:auto}
+.tl-search{width:220px;padding:5px 9px;font-size:12px}
+.chip-button.tl-range.on{color:var(--accent-text);border-color:var(--accent);background:var(--accent-soft)}
+.chip-button.tl-cat{display:inline-flex;align-items:center;gap:5px;padding:1px 9px 1px 7px}
+.chip-button.tl-cat .tl-svg{width:12px;height:12px}
+.chip-button.tl-cat.on{color:var(--strong);border-color:var(--line-strong);background:var(--panel-2)}
+.chip-button.tl-cat:not(.on){text-decoration:line-through;opacity:.65}
+.tl-chip-count{font:500 10.5px var(--mono);color:var(--muted)}
+.tl-svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* Focus from the Problems page. */
+.tl-focus-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;margin:0 0 10px;border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:var(--radius);font-size:12px;color:var(--text)}
+.tl-focus-bar.hidden{display:none}
+.tl-focus-bar strong{color:var(--strong)}
+
+/* Density strip: one button per bin, changes in the accent colour, warnings in red, rollouts marked. */
+.tl-strip-wrap{border:1px solid var(--line);border-radius:var(--radius);background:var(--well);padding:8px 10px 4px;margin-bottom:6px}
+.tl-strip{position:relative;display:grid;grid-template-columns:repeat(60,minmax(0,1fr));gap:2px;height:46px;align-items:end}
+.tl-bin{position:relative;height:100%;padding:0;border:0;border-radius:2px;background:transparent;display:flex;align-items:flex-end;justify-content:center;min-width:0}
+.tl-bin:hover:not(:disabled){background:var(--hover)}
+.tl-bin:disabled{cursor:default;opacity:1}
+.tl-bin.empty::after{content:'';position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line)}
+.tl-bar{display:flex;flex-direction:column-reverse;justify-content:flex-start;width:100%;height:calc(100% - 7px)}
+.tl-bar-info{display:block;width:100%;background:var(--accent);border-radius:1px}
+.tl-bar-warn{display:block;width:100%;background:var(--bad);border-radius:1px;margin-bottom:1px}
+.tl-mark{position:absolute;top:0;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--teal)}
+.tl-problem-mark{position:absolute;top:-4px;bottom:-2px;width:0;border-left:2px dashed var(--bad);pointer-events:none}
+.tl-axis{display:flex;justify-content:space-between;font:10.5px var(--mono);color:var(--dim);padding-top:3px}
+.tl-notes{font-size:11.5px;color:var(--muted);margin:0 0 6px}
+.tl-sources summary{cursor:pointer;color:var(--warn-text)}
+.tl-sources ul{margin:4px 0 0;padding-left:18px}
+
+/* Entries. */
+.tl-list{display:flex;flex-direction:column}
+.tl-group{display:flex;align-items:baseline;gap:10px;padding:12px 4px 5px;border-bottom:1px solid var(--line);font-size:12px;color:var(--strong);position:sticky;top:-16px;background:var(--bg);z-index:1}
+.tl-group .muted{font-size:11px}
+.tl-entry{display:grid;grid-template-columns:74px 22px minmax(0,1fr) minmax(130px,auto) 14px;align-items:center;gap:10px;padding:6px 6px 6px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer;font-size:12px;border-left:2px solid transparent}
+.tl-entry:hover,.tl-entry:focus-visible{background:var(--hover);outline:0}
+.tl-entry.open{background:var(--panel-2)}
+.tl-entry.focused{border-left-color:var(--accent);background:var(--accent-soft)}
+.tl-entry.focused .kind-tag{box-shadow:inset 0 0 0 1px var(--line-strong)}
+.tl-entry.tl-target{outline:1px solid var(--accent);outline-offset:-1px}
+.tl-time{display:flex;flex-direction:column;font:11.5px var(--mono);color:var(--cell);line-height:1.3}
+.tl-time small{font:10.5px var(--font);color:var(--dim)}
+.tl-icon{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--chip);color:var(--muted)}
+.tl-icon.cat-rollouts{color:var(--teal)}
+.tl-icon.cat-config{color:var(--magenta)}
+.tl-icon.cat-restarts{color:var(--warn)}
+.tl-icon.cat-warnings{color:var(--warn)}
+.tl-icon.cat-scaling{color:var(--info)}
+.tl-icon.cat-jobs{color:var(--good)}
+.tl-icon.cat-gitops{color:var(--accent-text)}
+.tl-icon.cat-nodes{color:var(--cell)}
+.tl-icon.sev-warning{color:var(--warn)}
+.tl-icon.sev-critical{color:var(--bad-text)}
+.chip-button.tl-cat.on.cat-rollouts .tl-svg{color:var(--teal)}
+.chip-button.tl-cat.on.cat-config .tl-svg{color:var(--magenta)}
+.chip-button.tl-cat.on.cat-restarts .tl-svg,.chip-button.tl-cat.on.cat-warnings .tl-svg{color:var(--warn)}
+.chip-button.tl-cat.on.cat-scaling .tl-svg{color:var(--info)}
+.chip-button.tl-cat.on.cat-jobs .tl-svg{color:var(--good)}
+.chip-button.tl-cat.on.cat-gitops .tl-svg{color:var(--accent-text)}
+.tl-body{display:flex;flex-direction:column;min-width:0;gap:1px}
+.tl-line{display:flex;align-items:center;gap:7px;min-width:0}
+.tl-title{color:var(--strong);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tl-entry.sev-warning .tl-title{color:var(--warn-text)}
+.tl-entry.sev-critical .tl-title{color:var(--bad-text)}
+.tl-summary{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl-object{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-size:12px}
+.tl-object a.link{word-break:normal}
+.tl-chevron{color:var(--dim);font-size:10px}
+.tl-flag{display:inline-flex;align-items:center;flex:none;border-radius:3px;padding:1px 6px;font-size:10px;font-weight:600;letter-spacing:.2px;white-space:nowrap}
+.tl-flag.related{color:var(--warn-text);border:1px solid var(--warn)}
+.tl-flag.new{color:var(--accent-text);border:1px solid var(--accent-line)}
+.tl-entry.related .tl-icon{box-shadow:0 0 0 1px var(--warn)}
+.tl-detail{padding:8px 12px 12px 110px;border-bottom:1px solid var(--line-soft);background:var(--panel-2);font-size:12px;display:flex;flex-direction:column;gap:5px}
+.tl-detail-line{color:var(--text);overflow-wrap:anywhere}
+.tl-why{color:var(--text)}
+.tl-why .tl-flag{margin-right:4px}
+.tl-diff-head{margin-top:6px;font-size:11.5px}
+.tl-detail .diff-sbs{max-height:420px}
+.tl-progress{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px;color:var(--text)}
+.tl-progress-time{display:inline-block;width:70px;font:11px var(--mono);color:var(--dim)}
+.tl-more{display:flex;justify-content:center;padding:12px}
+
+@media (max-width:1180px){
+  .tl-filters{margin-left:0}
+  .tl-entry{grid-template-columns:64px 22px minmax(0,1fr) minmax(100px,30%) 12px}
+  .tl-detail{padding-left:12px}
+}
+
+/* The Problems page gains a "What changed?" action: rows stay aligned on wide windows, and on narrow
+   ones the action shrinks to its icon so the row still fits. */
+@media (min-width:1280px){ .problem-actions{min-width:320px;justify-content:flex-end} }
+@media (max-width:1279px){
+  .tl-problem-label{display:none}
+  .problem-row{grid-template-columns:12px minmax(130px,1.3fr) 90px minmax(160px,2fr) 40px auto}
+}
