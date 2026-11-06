@@ -36,9 +36,11 @@ import { capacityPage } from './capacity.js';
 import { createCommandBar } from './commands-palette.js';
 import { setupRollouts } from './rollouts.js';
 import { canSnapshotProblem, snapshotProblem, snapshotCommand } from './snapshot.js';
+import { rightsizingPage, startRightsizingSampler } from './rightsizing.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
+startRightsizingSampler(usage);
 const activeTab = () => state.tabs.find(tab => tab.id === state.active) || state.tabs[0];
 // Tabs work like a browser's: each one remembers its cluster, namespace and view, so two clusters
 // can be open side by side and switching is a click. The active tab's cluster is state.context.
@@ -122,6 +124,7 @@ const NAV = [
   leaf('Advisor', 'advisor', undefined, { icon: 'security' }),
   { id: 'workloads', title: 'Workloads', icon: 'workloads', children: [
     leaf('Overview', 'workloads', undefined, { tabTitle: 'Workloads overview' }),
+    leaf('Rightsizing', 'rightsizing', undefined, { tabTitle: 'Rightsizing' }),
     kube('Pods', 'pods'), kube('Deployments', 'deployments'), kube('Daemon Sets', 'daemonsets'), kube('Stateful Sets', 'statefulsets'),
     kube('Replica Sets', 'replicasets'), kube('Replication Controllers', 'replicationcontrollers'), kube('Jobs', 'jobs'), kube('Cron Jobs', 'cronjobs'),
   ] },
@@ -766,6 +769,7 @@ async function render() {
       case 'fleet': node = fleetPage(); break;
       case 'capacity': node = capacityPage({ liveList, liveBadge, consumeResync, refreshView }); break;
       case 'workloads': node = await workloadsPage(); break;
+      case 'rightsizing': node = rightsizingPage({ liveList, liveBadge, consumeResync, refreshView }); break;
       case 'resource': node = await resourcePage(tab); break;
       case 'helm-charts': node = await helmChartsPage(); break;
       case 'events': node = await eventPage(); break;

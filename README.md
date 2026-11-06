@@ -69,6 +69,10 @@ Logs of a Deployment, StatefulSet, DaemonSet or Job follow every pod at once, on
 
 CPU and memory are shown for pods, workloads, namespaces and nodes against their requests, limits and capacity, and update live. History comes from Prometheus, Thanos or VictoriaMetrics when the cluster runs one.
 
+### What requests cost, and what to change
+
+**Workloads › Rightsizing** puts each Deployment, StatefulSet and DaemonSet's CPU and memory requests next to what it actually uses (the 7-day p95 from Prometheus when the cluster has one, otherwise metrics-server samples collected while Rubban is open), estimates what the requests cost a month, and recommends new requests. **Apply…** shows the diff and the server's dry-run before anything changes, and **Copy as kubectl** gives the same change as a `kubectl set resources` command.
+
 ### Everything else
 
 - **Live views of every kind.** Each kind gets its own columns and details, kept up to date over a per-cluster watch connection.
@@ -260,6 +264,7 @@ To turn the start-up check off, set `RUBBAN_SKIP_SHELL_ENV=1` (for example with 
 7. **Compare.** **Compare…** in a resource's details shows the same resource on two sides, for example prod and staging, in a new tab: cleaned, sorted YAML with the differing lines marked (**Hide unchanged**, **Include status**, **Swap sides**, **Copy diff**). Secrets are never compared.
 8. **Create and edit with a review.** In **Create** and in a resource's **YAML** tab, press **Review** to see exactly what would change (diff, objects, warnings, and the cluster's own validation or admission errors) before **Apply** unlocks. Editing the text after a review locks it again.
 9. **Expired credentials show up where you look.** A cluster whose credentials expired gets an amber ring on its tab, in the selector and on the hotbar, and a banner with **Sign in again**. It opens the terminal dock running the one command that fixes it (`gcloud auth login`, `az login` or `aws sso login --profile …`, chosen from the cluster's kubeconfig); when the login finishes, the views reconnect.
+   **Workloads › Rightsizing** shows requested against used CPU and memory per workload, the monthly cost of the requests (set your prices per vCPU-hour and GiB-hour above the table) and what the recommendations would save. Filter by status, expand a row for each container, and use **Apply…** to review and apply a recommendation or **Copy as kubectl** to run it yourself. Without Prometheus the numbers come from metrics-server samples taken while Rubban has the cluster open, so leave it open a while before trusting a recommendation.
 10. **Click any row** for its details: overview, metrics, YAML and events. Use ⋮ or right-click for that row's actions.
 11. **Settings** is the gear at the bottom of the sidebar. It holds:
    - what your identity may do in the current cluster (**Access**);
@@ -394,6 +399,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Incident snapshot | `get` on the object and its owners; `list` pods, events, services, configmaps, secrets (names only are used), ingresses and horizontalpodautoscalers in the namespace, and nodes; `pods/log`: `get`. A part you may not read is noted in the report and the rest is still collected |
 | Review before apply | `create`/`patch` with dry-run on the resource (the review asks the API server to validate the manifest without storing it) |
 | Rollout tracker | `list` and `watch` on the workload's kind, `pods` and `replicasets` (Deployments) or `controllerrevisions` (StatefulSets, DaemonSets) in its namespace; **Undo** and **Pause** need `patch` on the workload |
+| Rightsizing | `list` and `watch` on deployments, statefulsets, daemonsets, pods and nodes; `metrics.k8s.io` or `services/proxy` on Prometheus for usage; `patch` on the workload to apply a recommendation |
 
 **Settings › Access** checks all of these for you: it asks the cluster what your identity may do in the namespace you choose, and **Copy as text** gives you something to send to an administrator.
 
