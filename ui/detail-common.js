@@ -184,7 +184,7 @@ export function metricsView(selected, spec) {
     const session = spec.session?.(containerSelect?.value || '') || [];
     const usable = session.filter(chart => chart.series.some(s => s.values.length));
     grid.replaceChildren(
-      info(`${String(fallbackReason || provider.error || 'Prometheus was not found in this cluster').replace(/\.?$/, '.')} Showing usage sampled from metrics.k8s.io every 15 seconds since this cluster was opened. Configure Prometheus in Settings › Metrics for long-range history.`),
+      Object.assign(info(`${String(fallbackReason || provider.error || 'Prometheus was not found in this cluster').replace(/\.?$/, '.')} Showing usage sampled from metrics.k8s.io every 15 seconds since this cluster was opened; choose a Prometheus in Settings › Metrics for long-range history.`), { className: 'callout info metrics-fallback' }),
       ...(usable.length ? usable.map(chart => lineChart(chart.series, { format: FORMATS[chart.format] || String, title: chart.title })) : [muted(hooks.usage?.available === false ? `metrics-server is not available: ${hooks.usage.message}` : 'Collecting samples… charts appear after the next refresh.')]));
   }
   rangeSelect.addEventListener('change', () => load());

@@ -39,10 +39,12 @@ export function renderCluster() {
     const meta = name ? infoFor(name) : null;
     switcher.replaceChildren(
       meta ? iconBox(name, 'cluster-badge') : el('span', { class: 'cluster-badge' }, clusterIcon('cluster')),
-      el('span', { class: 'context-text' }, el('span', { class: 'context-label', text: 'Cluster' }), el('span', { class: 'context-name', text: meta ? meta.label : 'Select a cluster…' })),
-      ...(meta && meta.env ? [envBadge(meta.env)] : []));
-    switcher.title = name ? `${meta.label} · ${name}` : 'Choose a cluster (Ctrl+Shift+K)';
+      // The environment sits on the label line so the cluster's name keeps the full width.
+      el('span', { class: 'context-text' }, el('span', { class: 'context-label' }, 'Cluster', meta && meta.env ? el('span', { class: `context-env env-${meta.env}`, text: meta.env }) : null), el('span', { class: 'context-name', text: meta ? meta.label : 'Select a cluster…' })));
+    switcher.title = name ? `${meta.label} · ${name}${meta.env ? ` · ${meta.env}` : ''} — switch cluster (Ctrl+Shift+K)` : 'Choose a cluster (Ctrl+Shift+K)';
   }
+  // The window carries the cluster's environment, so production is recognisable from any view.
+  if (typeof document !== 'undefined') { const env = name ? infoFor(name).env || '' : ''; if (env) document.documentElement.dataset.env = env; else delete document.documentElement.dataset.env; }
   const status = $('#workspace-context');
   if (status) { status.textContent = name ? labelFor(name) : 'Local workspace'; status.title = name || ''; }
   const list = favorites();

@@ -4,6 +4,7 @@ import { el, badge, age, statusOf, liveKey, liveStamp, state, link, hooks } from
 import { parseQuantity, parseCPU, parseMemory, formatCPU, formatBytes, formatPercent, podResources, matchesSelector, selectorText, formatDuration, nextCronRun, jsonPath } from './format.js';
 export { jsonPath };
 import { indexPods } from './usage.js';
+import { workloadState, replicaCounts } from './health.js';
 
 // ---- Kind ↔ resource mapping ------------------------------------------------------------------
 const CORE_KINDS = {
@@ -174,14 +175,18 @@ function podColumns(ctx) {
 
 // ---- Workloads --------------------------------------------------------------------------------
 const desiredOf = item => item.spec?.replicas ?? 1;
+// Workload state in words ("Healthy", "Rolling out", "Unavailable") with ready/desired, sorted worst first.
+const STATE_RANK = { bad: 0, warn: 1, '': 2, good: 3 };
+const workloadStateColumn = resource => ({ id: 'state', title: 'Status', render: item => { const value = workloadState(resource, item); return el('span', { class: `state-pill ${value.tone || 'neutral'}`, title: value.detail || '' }, el('i'), value.label); }, sort: item => STATE_RANK[workloadState(resource, item).tone] ?? 2 });
 function replicaColumns(kind) {
-  if (kind === 'DaemonSet') return [{ id: 'pods', title: 'Pods', render: item => `${item.status?.numberReady || 0}/${item.status?.desiredNumberScheduled || 0}`, sort: item => item.status?.desiredNumberScheduled || 0 }];
-  return [{ id: 'pods', title: 'Pods', render: item => { const ready = item.status?.readyReplicas || 0; const desired = desiredOf(item); const text = `${ready}/${desired}`; return ready < desired ? el('span', { class: 'warn-text', text }) : text; }, sort: item => desiredOf(item) }];
+  const resource = kind === 'DaemonSet' ? 'daemonsets' : kind === 'StatefulSet' ? 'statefulsets' : 'deployments';
+  const render = item => { const { ready, desired } = replicaCounts(resource, item); const text = `${ready}/${desired}`; return ready < desired ? el('span', { class: ready === 0 && desired > 0 ? 'bad-text' : 'warn-text', text }) : text; };
+  return [workloadStateColumn(resource), { id: 'pods', title: 'Pods', render, sort: item => replicaCounts(resource, item).desired }];
 }
 const deploymentColumns = ctx => [nameColumn, namespaceColumn, ...replicaColumns('Deployment'),
   { id: 'replicas', title: 'Replicas', class: 'num', render: item => num(item.spec?.replicas, '1'), sort: desiredOf },
   ...aggregateUsageColumns(ctx), imagesColumn, ageColumn,
-  { id: 'conditions', title: 'Conditions', render: item => conditionBadges(item, ['Available', 'Progressing', 'ReplicaFailure']) }];
+  { id: 'conditions', title: 'Conditions', hidden: true, render: item => conditionBadges(item, ['Available', 'Progressing', 'ReplicaFailure']) }];
 const daemonSetColumns = ctx => [nameColumn, namespaceColumn, ...replicaColumns('DaemonSet'),
   { id: 'nodeSelector', title: 'Node selector', class: 'wrap', render: item => joinLimited(Object.entries(item.spec?.template?.spec?.nodeSelector || {}).map(([k, v]) => `${k}=${v}`), 2) || '—' },
   ...aggregateUsageColumns(ctx), imagesColumn, ageColumn];

@@ -212,7 +212,9 @@ export function table(items, columns, onRow, options = {}) {
       trigger.addEventListener('click', event => { event.stopPropagation(); popupMenu(trigger, options.menu(item)); });
       cells.push(el('td', { class: 'menu-col' }, trigger));
     }
-    const tr = el('tr', { class: onRow ? 'clickable' : '', ...(onRow ? { onclick: () => onRow(item), tabindex: '0', onkeydown: event => { if (event.key === 'Enter' && event.target === tr) onRow(item); } } : {}) }, cells);
+    let tone = '';
+    if (options.rowTone) { try { tone = options.rowTone(item) || ''; } catch { tone = ''; } }
+    const tr = el('tr', { class: [onRow ? 'clickable' : '', tone ? `tone-${tone}` : ''].filter(Boolean).join(' '), ...(onRow ? { onclick: () => onRow(item), tabindex: '0', onkeydown: event => { if (event.key === 'Enter' && event.target === tr) onRow(item); } } : {}) }, cells);
     if (options.menu) tr.addEventListener('contextmenu', event => { event.preventDefault(); const trigger = tr.querySelector('.row-menu'); if (trigger) popupMenu(trigger, options.menu(item)); });
     tr._check = check;
     return tr;
@@ -296,7 +298,7 @@ export function table(items, columns, onRow, options = {}) {
     else body.replaceChildren(...trs);
     if (!filtered.length) {
       const needle = search.value.trim();
-      body.append(el('tr', {}, el('td', { colspan }, el('div', { class: 'list-note', text: pending ? 'Loading from your cluster…' : needle ? 'No results match this search.' : options.empty || 'No resources found in this scope.' }))));
+      body.append(el('tr', {}, el('td', { colspan }, el('div', { class: 'list-note', text: pending ? 'Loading from your cluster…' : needle ? 'No results match this search.' : facet && current.length ? 'Nothing here matches this filter.' : options.empty || 'No resources found in this scope.' }))));
     }
     if (selectable) syncRows();
     if (trs.length && body.isConnected) { fit(); if (virtual && !calibrating) calibrate(trs); }
@@ -419,9 +421,22 @@ export function table(items, columns, onRow, options = {}) {
     if (!covers(rendered, visible)) paint();
   } };
   liveTables.add(entry);
+  // Health facets ("All · Healthy · Warning · Failing"): one click narrows a long list to what needs attention.
+  let facet = '';
+  const facetBar = options.facets ? el('div', { class: 'facet-bar', role: 'group', 'aria-label': 'Filter by health' }) : null;
+  function renderFacets() {
+    if (!facetBar) return;
+    const counts = options.facets.map(entry => current.reduce((sum, item) => { try { return sum + (entry.test(item) ? 1 : 0); } catch { return sum; } }, 0));
+    if (facet && !options.facets.some(entry => entry.id === facet)) facet = '';
+    const chip = (id, label, count, tone = '') => el('button', { type: 'button', class: `facet${facet === id ? ' active' : ''}${tone ? ` facet-${tone}` : ''}${count === 0 && id ? ' empty' : ''}`, 'aria-pressed': facet === id ? 'true' : 'false', onclick: () => { facet = facet === id ? '' : id; rows(); } }, tone ? el('i', { class: `facet-dot ${tone}` }) : null, label, el('b', { text: pending ? '…' : count.toLocaleString() }));
+    facetBar.replaceChildren(chip('', 'All', current.length), ...options.facets.map((entry, index) => chip(entry.id, entry.label, counts[index], entry.tone)));
+  }
   function rows(filter = search.value) {
     const needle = filter.toLowerCase().trim();
-    const filtered = sortItems(needle ? current.filter(item => searchOf(item).includes(needle)) : current);
+    const facetTest = facet ? options.facets.find(entry => entry.id === facet)?.test : null;
+    const scoped = facetTest ? current.filter(item => { try { return facetTest(item); } catch { return false; } }) : current;
+    renderFacets();
+    const filtered = sortItems(needle ? scoped.filter(item => searchOf(item).includes(needle)) : scoped);
     lastFiltered = filtered;
     // Bulk actions apply only to rows the filter still shows.
     if (selectable && selection.size) { const shown = new Set(filtered.map(keyOf)); for (const id of [...selection.keys()]) if (!shown.has(id)) selection.delete(id); }
@@ -431,7 +446,7 @@ export function table(items, columns, onRow, options = {}) {
     if (selectable) syncSelection();
     // Detached on first paint (the page is attached right after it is built): fix the window then.
     if (virtual && !body.isConnected) scheduleWindows();
-    count.textContent = pending ? '' : `${filtered.length.toLocaleString()}${needle ? ` of ${current.length.toLocaleString()}` : ''} ${filtered.length === 1 ? 'item' : 'items'}`;
+    count.textContent = pending ? '' : `${filtered.length.toLocaleString()}${needle || facetTest ? ` of ${current.length.toLocaleString()}` : ''} ${filtered.length === 1 ? 'item' : 'items'}`;
   }
   const search = el('input', { class: 'table-search', type: 'search', placeholder: options.placeholder || 'Filter resources…', 'aria-label': 'Filter table', oninput: event => { rows(event.target.value); if (virtual) scroller.scrollTop = 0; } });
   const toolbarExtra = [];
@@ -444,7 +459,7 @@ export function table(items, columns, onRow, options = {}) {
     toolbarExtra.push(chooser);
   }
   const root = el('section', { class: 'panel table-panel' },
-    el('div', { class: 'table-toolbar' }, search, bulkBar, el('div', { class: 'actions' }, count, options.extra, toolbarExtra)),
+    el('div', { class: 'table-toolbar' }, search, facetBar, bulkBar, el('div', { class: 'actions' }, count, options.extra, toolbarExtra)),
     scroller);
   entry.root = root;
   // Live tables: replace the item set; only rows whose stamp changed are rendered again.

@@ -24,6 +24,9 @@ import { createProblemStore } from './problems.js';
 import { searchContexts, groupByKind, resultDetail, searchable } from './search.js';
 import { permissionText, scopeText, groupByFeature, asText, summary } from './access.js';
 import { createForwardsPoller, statusText, statusLevel } from './forwards.js';
+import { healthTone, healthFacets } from './health.js';
+import { diagnosisCard } from './diagnosis-view.js';
+import { groupProblems, totalsOf } from './problems-group.js';
 
 const usage = createUsage({ api });
 hooks.usage = usage;
@@ -276,7 +279,7 @@ function renderTabs() {
     const found = tab.context ? problemsStore.countsFor(tab.context) : { critical: 0, warning: 0 };
     const dot = found.critical ? 'critical' : found.warning ? 'warning' : '';
     const mark = meta ? el('span', { class: `tab-cluster${expired ? ' auth-expired' : ''}`, style: `color:${meta.color}` }, clusterIcon(meta.icon), dot ? el('i', { class: `tab-dot ${dot}` }) : null) : null;
-    const node = button([mark, icon(tab.icon || allNav().find(item => sameView(item, tab))?.icon || allNav().find(item => sameView(item, tab))?.trail?.[0]?.icon || 'overview', 'ui-svg tab-svg'), el('span', { class: 'tab-title', text: clustersOpen && meta ? `${meta.label} · ${tab.title}` : tab.title }), el('span', { class: 'tab-close', title: `Close tab (${MOD}+W)`, role: 'button', 'aria-label': `Close ${tab.title}`, onclick: event => { event.stopPropagation(); closeTab(tab.id); }, text: '×' })], () => activateTab(tab.id), `tab${state.active === tab.id ? ' active' : ''}`);
+    const node = button([mark, icon(tab.icon || allNav().find(item => sameView(item, tab))?.icon || allNav().find(item => sameView(item, tab))?.trail?.[0]?.icon || 'overview', 'ui-svg tab-svg'), clustersOpen && meta ? el('span', { class: 'tab-ctx', style: `--ctx:${meta.color}`, text: meta.label }) : null, el('span', { class: 'tab-title', text: tab.title }), tab.context && tab.namespace && tab.namespace !== '*' && tab.section !== 'problems' ? el('span', { class: 'tab-ns', text: tab.namespace }) : null, el('span', { class: 'tab-close', title: `Close tab (${MOD}+W)`, role: 'button', 'aria-label': `Close ${tab.title}`, onclick: event => { event.stopPropagation(); closeTab(tab.id); }, text: '×' })], () => activateTab(tab.id), `tab${state.active === tab.id ? ' active' : ''}`);
     node.title = meta ? `${meta.label} · ${tab.context}${tab.namespace !== '*' ? ` · ${tab.namespace}` : ''}${expired ? ` — credentials expired${credentials.authOf(tab.context).message ? `: ${credentials.authOf(tab.context).message}` : ''}` : ''}${dot ? ` — ${found.critical ? `${found.critical} critical` : ''}${found.critical && found.warning ? ', ' : ''}${found.warning ? `${found.warning} warning${found.warning === 1 ? '' : 's'}` : ''}` : ''}` : 'No cluster';
     node.addEventListener('auxclick', event => { if (event.button === 1) { event.preventDefault(); closeTab(tab.id); } });
     node.setAttribute('role', 'tab'); node.setAttribute('aria-selected', state.active === tab.id ? 'true' : 'false'); return node;
@@ -340,10 +343,11 @@ function problemsPage() {
       problem.credentials ? button('Sign in again', event => { event.stopPropagation(); signIn(problem.context).catch(error => toast(error.message, true)); }, 'compact') : null,
       problem.resource === 'pods' ? button('Logs', event => { event.stopPropagation(); task(() => podLogsOf(problem))(); }, 'compact quiet') : null,
       problem.resource === 'cluster' ? null : button('Open', event => { event.stopPropagation(); task(() => openProblem(problem))(); }, 'compact quiet'),
-      button('Snooze 1 h', event => { event.stopPropagation(); problemsStore.snooze(problem.id); }, 'compact quiet'));
-    const node = el('div', { class: 'problem-row', role: 'button', tabindex: '0', title: problem.detail },
+      button('Snooze 1 h', event => { event.stopPropagation(); for (const member of problem.members || [problem]) problemsStore.snooze(member.id); }, 'compact quiet'));
+    const many = (problem.members?.length || 1) > 1;
+    const node = el('div', { class: `problem-row ${problem.severity}`, role: 'button', tabindex: '0', title: many ? `${problem.detail || ''}\n\n${problem.members.map(member => member.name).join('\n')}` : problem.detail },
       el('i', { class: `severity-dot ${problem.severity}`, title: problem.severity }),
-      el('span', { class: 'problem-what' }, el('span', { class: 'problem-kind', text: PROBLEM_KINDS[problem.resource] || problem.resource }), el('strong', { text: problem.name })),
+      el('span', { class: 'problem-what' }, el('span', { class: 'problem-kind', text: many ? `${problem.members.length} ${PROBLEM_KINDS[problem.resource] || problem.resource}s of ${problem.owner}` : PROBLEM_KINDS[problem.resource] || problem.resource }), el('strong', { text: many ? problem.owner : problem.name })),
       el('span', { class: 'problem-ns muted', text: problem.namespace }),
       el('span', { class: 'problem-title' }, el('span', { text: problem.title }), problem.detail ? el('small', { class: 'muted', text: problem.detail }) : null),
       el('span', { class: 'problem-since muted', text: problem.since ? age(problem.since) : '' }),
@@ -364,11 +368,16 @@ function problemsPage() {
     if (problemFilters.context && !contexts.includes(problemFilters.context)) { problemFilters.context = ''; fillClusters(); draw(); return; }
     if (!shown.length && problemsStore.all().length) { list.replaceChildren(empty('No problems match these filters', 'Change the severity, cluster or namespace filter to see the others.', undefined, '⌕')); return; }
     if (!shown.length) { list.replaceChildren(empty(contexts.length ? `Nothing to report in ${contexts.length} cluster${contexts.length === 1 ? '' : 's'}` : 'No clusters are being watched yet', contexts.length ? 'Pods, workloads, nodes and Argo CD applications look healthy.' : 'Open a cluster and its problems appear here.', undefined, contexts.length ? '✓' : '◈')); return; }
-    const nodes = [];
-    for (const context of [...new Set(shown.map(problem => problem.context))]) {
+    const totals = totalsOf(shown);
+    const grouped = groupProblems(shown);
+    const stat = (value, label, tone) => el('div', { class: `problem-stat ${tone}` }, el('b', { text: String(value) }), el('span', { text: label }));
+    const nodes = [el('div', { class: 'problem-summary' }, stat(totals.critical, 'critical', 'critical'), stat(totals.warning, `warning${totals.warning === 1 ? '' : 's'}`, 'warning'), totals.info ? stat(totals.info, 'info', 'info') : null,
+      el('span', { class: 'muted problem-scope', text: `${grouped.length} item${grouped.length === 1 ? '' : 's'} to look at · ${totals.namespaces.size} namespace${totals.namespaces.size === 1 ? '' : 's'} · ${totals.clusters.size} cluster${totals.clusters.size === 1 ? '' : 's'}` }))];
+    for (const context of [...new Set(grouped.map(problem => problem.context))]) {
       const meta = infoFor(context);
-      nodes.push(el('div', { class: 'problem-cluster' }, el('span', { class: 'tab-cluster', style: `color:${meta.color}` }, clusterIcon(meta.icon)), el('strong', { text: meta.label }), el('span', { class: 'muted', text: `${shown.filter(problem => problem.context === context).length} problems` })));
-      nodes.push(...shown.filter(problem => problem.context === context).map(row));
+      const mine = grouped.filter(problem => problem.context === context);
+      nodes.push(el('div', { class: 'problem-cluster' }, el('span', { class: 'tab-cluster', style: `color:${meta.color}` }, clusterIcon(meta.icon)), el('strong', { text: meta.label }), meta.env ? el('span', { class: `context-env env-${meta.env}`, text: meta.env }) : null, el('span', { class: 'muted', text: `${mine.length} item${mine.length === 1 ? '' : 's'}` })));
+      nodes.push(...mine.map(row));
     }
     list.replaceChildren(...nodes);
   }
@@ -637,7 +646,9 @@ async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
   state.context = name; state.namespace = namespace; state.discovery = cache.discovery; state.crds = cache.crds; state.selected = null;
   $('#drawer').classList.add('hidden'); state.drawerHistory = [];
   usage.setContext(name);
-  $('#context-caption').textContent = name ? 'Live connection · kubeconfig credentials' : 'Choose a kubeconfig context';
+  const kubeContext = state.contexts.find(context => context.name === name);
+  $('#context-caption').textContent = name ? (kubeContext?.cluster && kubeContext.cluster !== name ? kubeContext.cluster : 'kubeconfig context') : 'Choose a kubeconfig context';
+  $('#context-caption').title = name ? `Context ${name}${kubeContext?.cluster ? ` · cluster ${kubeContext.cluster}` : ''}${kubeContext?.user ? ` · user ${kubeContext.user}` : ''}` : '';
   $('#connection-status').textContent = name ? (cache.namespaces ? 'Cluster connected' : 'Context selected') : 'No cluster selected';
   $('#connection-dot').classList.toggle('connected', Boolean(name)); $('#workspace-dot').classList.toggle('connected', Boolean(name));
   $('#namespace').replaceChildren(el('option', { value: '*', text: 'All namespaces' }), ...(cache.namespaces || []).map(value => el('option', { value, text: value })));
@@ -681,13 +692,15 @@ async function selectContext(name, { namespace = '*', fromTab = false } = {}) {
   } catch (error) { if (!contextAbort.signal.aborted) toast(`Discovery: ${error.message}`, true); }
 }
 function welcome() {
-  const root = el('div', { class: 'welcome' }, el('span', { class: 'welcome-tag' }, '◈  YOUR INDEPENDENT WORKSPACE'), el('h1', { text: 'Your clusters. A clearer perspective.' }), el('p', { text: 'Explore Kubernetes, troubleshoot workloads, and manage your infrastructure from one local desktop workspace. Choose a kubeconfig context to get started.' }));
+  const root = el('div', { class: 'welcome' }, el('span', { class: 'welcome-tag' }, '◈  RUBBAN · رُبّان'), el('h1', { text: state.contexts.length ? 'Pick a cluster to start.' : 'Your clusters. A clearer perspective.' }), el('p', { text: state.contexts.length ? `Rubban found ${state.contexts.length} context${state.contexts.length === 1 ? '' : 's'} in your kubeconfig. It connects only to the one you open, and never changes your kubeconfig. ${MOD}+T opens another cluster in a new tab.` : 'Explore Kubernetes, troubleshoot workloads, and manage your infrastructure from one local desktop workspace. Add a kubeconfig to get started.' }));
   const choices = el('div', { class: 'context-list' });
   for (const context of state.contexts) { const meta = infoFor(context.name); const mark = el('span', { style: `color:${meta.color}` }); mark.append(clusterIcon(meta.icon)); choices.append(button([mark, el('div', {}, el('strong', { text: meta.label }), el('small', { text: meta.label === context.name ? context.cluster || 'Kubeconfig context' : context.name })), el('span', { class: 'spacer' }), credentials.isExpired(context.name) ? badge('credentials expired', 'warn') : null, meta.env ? badge(meta.env, meta.env === 'production' ? 'bad' : meta.env === 'staging' ? 'warn' : 'info') : null, el('span', { text: '→' })], () => selectContext(context.name), 'context-choice')); }
   if (state.contextsError) choices.append(info(`Could not read kubeconfig contexts: ${state.contextsError}`, 'error'), button('Reload contexts', task(reloadContexts), 'compact'));
   else if (!state.contexts.length) choices.append(info('No kubeconfig contexts were found. Paste or import a kubeconfig below, or configure one with kubectl.'));
   root.append(el('div', { class: 'welcome-grid' }, panel('Choose a cluster', choices, badge(`${state.contexts.length} contexts`)), panel('Built for the work you do', [el('div', { class: 'feature-row' }, el('span', { text: '▦' }), el('div', {}, el('strong', { text: 'See the whole cluster' }), 'Workloads, networking, storage, access, and custom resources.')), el('div', { class: 'feature-row' }, el('span', { text: '›_' }), el('div', {}, el('strong', { text: 'Troubleshoot in context' }), 'Live logs, interactive terminals, metrics, and port forwarding.')), el('div', { class: 'feature-row' }, el('span', { text: '⑂' }), el('div', {}, el('strong', { text: 'Operate on your terms' }), 'Helm, Argo CD, and your own connected services.'))])));
-  root.append(el('div', { style: 'margin-top:18px' }, importPanels(() => openView('clusters'))));
+  // With clusters to choose from, importing another kubeconfig is a secondary task: keep it folded.
+  const imports = el('div', { class: 'welcome-import-body' }, importPanels(() => openView('clusters')));
+  root.append(state.contexts.length ? el('details', { class: 'welcome-import' }, el('summary', {}, el('strong', { text: 'Add a cluster from another kubeconfig' }), el('span', { class: 'muted', text: ' · paste it or pick a file; Rubban keeps a private copy and never changes yours' })), imports) : el('div', { style: 'margin-top:18px' }, imports));
   const tools = state.health?.tools || {};
   root.append(el('div', { class: 'actions', style: 'margin-top:22px' }, badge(`kubectl ${toolAvailable(tools.kubectl) ? 'available' : 'not found'}`, toolAvailable(tools.kubectl) ? 'good' : 'warn'), badge(`Helm ${toolAvailable(tools.helm) ? 'available' : 'not found'}`, toolAvailable(tools.helm) ? 'good' : 'warn'), button('Connection settings', () => openView('settings'), 'quiet compact')));
   return root;
@@ -944,7 +957,7 @@ async function resourcePage(tab) {
   root.classList.add('fill-page');
   if (resource === 'secrets') root.append(info('Secret names, types and keys are listed here. Values are fetched only when you reveal them in a secret’s details.'));
   const strip = el('div', { class: 'usage-strip' });
-  const view = table([], columnsFor(resource, ctx), item => showResource(item, resource), { id: `resource:${resource}`, key: liveKey, stamp: withUsage || withPods ? item => `${liveStamp(item)}|${ctx.version()}` : liveStamp, pending: true, menu: item => rowMenu(resource, item), bulk: bulkActions(resource), searchText: searchTextFor(resource), sortBy: resource === 'events' ? 'lastSeen' : null, placeholder: `Filter ${tab.title.toLowerCase()}…` });
+  const view = table([], columnsFor(resource, ctx), item => showResource(item, resource), { id: `resource:${resource}`, key: liveKey, stamp: withUsage || withPods ? item => `${liveStamp(item)}|${ctx.version()}` : liveStamp, pending: true, menu: item => rowMenu(resource, item), bulk: bulkActions(resource), searchText: searchTextFor(resource), rowTone: item => healthTone(resource, item), facets: healthFacets(resource), sortBy: resource === 'events' ? 'lastSeen' : null, placeholder: `Filter ${tab.title.toLowerCase()}…` });
   root.append(strip, view);
   let items = [];
   const renderStrip = () => strip.replaceChildren(...usageStrip(resource, items, ctx));
@@ -1340,7 +1353,7 @@ function drawerBack() {
 function overviewContent(selected) {
   const item = selected.item;
   const [statusText, statusLevel] = statusOf(item);
-  return el('div', {}, el('div', { class: 'drawer-status' }, statusText !== '—' ? badge(statusText, statusLevel) : null, item.metadata?.creationTimestamp ? el('span', { class: 'muted', text: `created ${age(item.metadata.creationTimestamp)} ago` }) : ''), isArgoApplication(item) ? argoDetails(selected) : null, kindOverview(selected));
+  return el('div', {}, el('div', { class: 'drawer-status' }, statusText !== '—' ? badge(statusText, statusLevel) : null, item.metadata?.creationTimestamp ? el('span', { class: 'muted', text: `created ${age(item.metadata.creationTimestamp)} ago` }) : ''), diagnosisCard(selected), isArgoApplication(item) ? argoDetails(selected) : null, kindOverview(selected));
 }
 function resourceDetails(selected) {
   const root = $('#drawer-content'); const body = el('div', { class: 'drawer-body', id: 'resource-detail-panel', role: 'tabpanel', tabindex: '0' });
@@ -1474,12 +1487,13 @@ async function settingsPage() {
   state.preferences = await get('/api/preferences');
   renderFavorites();
   const root = page('Settings', 'Preferences are stored locally on this computer. Service endpoints are used only when you request data.');
-  const save = async patch => { state.preferences = await api('/api/preferences', { method: 'PUT', body: { ...state.preferences, ...patch } }); renderFavorites(); toast('Preferences saved.'); return 'Preferences saved locally.'; };
-  root.append(panel('Help', [el('p', { class: 'muted', text: 'A short walk through the main parts of Rubban.' }), el('div', { class: 'actions' }, button('Show the tour', () => takeTour(), 'compact'))]));
-  root.append(updatesPanel());
+  const save = async (patch, { quiet = false } = {}) => { state.preferences = await api('/api/preferences', { method: 'PUT', body: { ...state.preferences, ...patch } }); renderFavorites(); if (!quiet) toast('Preferences saved.'); return 'Preferences saved locally.'; };
   const themeLabels = { system: 'System', light: 'Light', dark: 'Dark' };
-  root.append(panel('Appearance', makeForm([{ name: 'theme', label: 'Theme', options: THEMES.map(value => ({ value, label: themeLabels[value] })), value: state.preferences.theme || 'system', help: 'System follows your Windows or macOS appearance setting.' }], 'Save appearance', values => { applyTheme(values.theme); return save({ theme: values.theme }); })));
-  if (state.context) root.append(accessPanel());
+  // The theme applies the moment it is chosen (and is saved), like a system setting.
+  const themeSwitch = el('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Theme' });
+  const drawTheme = () => themeSwitch.replaceChildren(...THEMES.map(value => el('button', { type: 'button', role: 'radio', class: (state.preferences.theme || 'system') === value ? 'active' : '', 'aria-checked': String((state.preferences.theme || 'system') === value), onclick: task(async () => { applyTheme(value); state.preferences.theme = value; drawTheme(); await save({ theme: value }, { quiet: true }); }) }, themeLabels[value])));
+  drawTheme();
+  root.append(Object.assign(panel('Appearance', [el('div', { class: 'setting-row' }, el('div', {}, el('strong', { text: 'Theme' }), el('p', { class: 'muted', text: 'System follows your Windows or macOS appearance setting.' })), themeSwitch)]), { id: 'settings-appearance' }));
   if (state.context) {
     const current = state.preferences.prometheusByContext?.[state.context] || { mode: 'auto' };
     const form = makeForm([
@@ -1496,10 +1510,11 @@ async function settingsPage() {
       resetPrometheusProvider(state.context);
       return save({ prometheusByContext: byContext });
     });
-    root.append(panel(`Metrics · ${state.context}`, [info('Rubban reaches Prometheus through the Kubernetes API server’s service proxy using your kubeconfig credentials; nothing is exposed locally. Auto-detect checks well-known service names and verifies them with a test query.'), form]));
+    root.append(Object.assign(panel(`Metrics · ${state.context}`, [info('Rubban reaches Prometheus through the Kubernetes API server’s service proxy using your kubeconfig credentials; nothing is exposed locally. Auto-detect checks well-known service names and verifies them with a test query.'), form]), { id: 'settings-metrics' }));
   }
-  root.append(panel('Terminal', makeForm([{ name: 'nodeShellImage', label: 'Node shell image', value: state.preferences.nodeShellImage || '', placeholder: 'busybox:1.36', help: 'Image for the privileged debug pod that node shells run in (kubectl debug node). It needs a shell; the host filesystem is mounted at /host.' }], 'Save terminal settings', values => save({ nodeShellImage: values.nodeShellImage.trim() }))));
+  root.append(Object.assign(panel('Terminal', makeForm([{ name: 'nodeShellImage', label: 'Node shell image', value: state.preferences.nodeShellImage || '', placeholder: 'busybox:1.36', help: 'Image for the privileged debug pod that node shells run in (kubectl debug node). It needs a shell; the host filesystem is mounted at /host.' }], 'Save terminal settings', values => save({ nodeShellImage: values.nodeShellImage.trim() }))), { id: 'settings-terminal' }));
   root.append(panel('Connected services', makeForm([{ name: 'prometheusUrl', label: 'External Prometheus URL', type: 'url', value: state.preferences.prometheusUrl || '', placeholder: 'http://127.0.0.1:9090', help: 'Optional. Used only by the External Prometheus query on the Metrics page.' }, { name: 'aiCommand', label: 'AI CLI', options: [{ value: '', label: 'Not configured' }, { value: 'codex', label: 'Codex' }, { value: 'claude', label: 'Claude' }, { value: 'gemini', label: 'Gemini' }, { value: 'opencode', label: 'OpenCode' }], value: state.preferences.aiCommand || '', help: 'Use an installed, authenticated CLI under your own account.' }], 'Save preferences', values => save(values))));
+  if (state.context) root.append(Object.assign(accessPanel(), { id: 'settings-access' }));
   root.append(el('div', { class: 'section-label' }, el('h2', { text: 'Local environment' })));
   const environment = el('div'); for (const [name, value] of Object.entries(state.health?.tools || {})) environment.append(el('div', { class: 'key-value' }, el('span', { text: name }), el('span', {}, badge(toolAvailable(value) ? 'Available' : 'Not found', toolAvailable(value) ? 'good' : 'warn'), el('span', { class: 'mono', style: 'margin-left:10px', text: typeof value === 'object' ? value?.path || value?.version || '' : typeof value === 'string' ? value : '' }))));
   environment.append(el('div', { class: 'key-value' }, el('span', { text: 'Platform' }), el('span', { text: state.health?.platform || 'Unknown' })), el('div', { class: 'key-value' }, el('span', { text: 'App version' }), el('span', { text: state.health?.version || 'Development build' })));
@@ -1511,10 +1526,26 @@ async function settingsPage() {
     }
     environment.append(el('div', { class: 'section-label' }, el('h3', { text: 'Cluster sign-in' })), sign);
   }
-  root.append(panel('Prerequisites', environment), info('Rubban uses local kubeconfig contexts and installed command line tools. Cluster connection, metrics, Argo CD and cost availability depend on your infrastructure.'));
-  root.append(panel('Keyboard shortcuts', dl([[`${MOD}+K`, 'Command palette'], [`${MOD}+Shift+K`, 'Switch cluster'], [`${MOD}+1`, 'Cluster overview'], [`${MOD}+\``, 'Show or hide the terminal dock'], ['/', 'Filter the sidebar'], ['Esc', 'Close the details panel'], ['Right-click a row', 'Row actions']])));
+  root.append(Object.assign(panel('Prerequisites', environment), { id: 'settings-prerequisites' }), info('Rubban uses local kubeconfig contexts and installed command line tools. Cluster connection, metrics, Argo CD and cost availability depend on your infrastructure.'));
+  root.append(Object.assign(panel('Keyboard shortcuts', shortcutList()), { id: 'settings-shortcuts' }));
+  root.append(Object.assign(updatesPanel(), { id: 'settings-updates' }));
+  root.append(Object.assign(panel('Help', [el('p', { class: 'muted', text: 'A short walk through the main parts of Rubban.' }), el('div', { class: 'actions' }, button('Show the tour', () => takeTour(), 'compact'), button('Keyboard shortcuts', () => shortcutsDialog(), 'compact quiet'))]), { id: 'settings-help' }));
+  // A section index, so the long page is one click from any setting.
+  const index = el('nav', { class: 'settings-index', 'aria-label': 'Settings sections' }, [...root.querySelectorAll('[id^="settings-"]')].map(node => el('a', { href: '#', onclick: event => { event.preventDefault(); node.scrollIntoView({ block: 'start' }); } }, node.querySelector('.panel-heading')?.firstChild?.textContent || node.id.replace('settings-', ''))));
+  root.firstChild.after(index);
   return root;
 }
+// ---- Keyboard shortcuts: the list in Settings and the "?" overlay -------------------------------
+const SHORTCUTS = () => [
+  ['Navigate', [[`${MOD}+K`, 'Command palette: views, resources in every open cluster'], [`${MOD}+Enter`, 'Open a search result in a new tab'], [`${MOD}+Shift+K`, 'Switch the cluster of this tab'], [`${MOD}+1`, 'Cluster overview'], ['/', 'Filter the sidebar'], ['?', 'Show these shortcuts']]],
+  ['Tabs', [[`${MOD}+T`, 'Open a cluster in a new tab'], [`${MOD}+W`, 'Close the tab'], ['Ctrl+Tab', 'Next tab'], ['Ctrl+Shift+Tab', 'Previous tab'], ['Middle-click', 'Close a tab · open a view in a new tab']]],
+  ['Lists and details', [['Enter', 'Open the focused row'], ['Right-click', 'Row actions'], ['Esc', 'Close the details panel or a dialog'], ['← →', 'Move between detail tabs']]],
+  ['Terminal and logs', [[`${MOD}+\``, 'Show or hide the terminal dock']]],
+];
+function shortcutList() {
+  return el('div', { class: 'shortcut-groups' }, SHORTCUTS().map(([title, rows]) => el('section', { class: 'shortcut-group' }, el('h3', { text: title }), rows.map(([keys, what]) => el('div', { class: 'shortcut-row' }, el('span', {}, keys.split('+').map((key, index) => [index ? '+' : '', el('kbd', { text: key })])), el('span', { text: what }))))));
+}
+function shortcutsDialog() { modal('Keyboard shortcuts', 'Rubban works without the mouse, too.', shortcutList()); }
 function aiPage() {
   const root = page('AI assistant', 'Ask an installed AI CLI for help. Only the prompt you submit and the selected context name are sent; cluster secrets are never added automatically.');
   root.append(info(state.preferences.aiCommand ? `Configured CLI: ${state.preferences.aiCommand}. Your CLI’s account and service terms apply.` : 'Choose and configure an authenticated AI CLI in Settings before submitting a prompt.'));
@@ -1670,6 +1701,8 @@ document.addEventListener('pointerdown', event => {
 setupDock();
 if (MOD !== 'Ctrl') { const kbd = $('#command-open kbd'); if (kbd) kbd.textContent = `${MOD}K`; $('#dock-min')?.setAttribute('title', `Hide dock (${MOD}+\`)`); }
 document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === '`') { event.preventDefault(); toggleDock(); } if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); openSwitcher(); } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); commandPalette(); } if ((event.ctrlKey || event.metaKey) && event.key === '1') { event.preventDefault(); openView('overview'); } if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closeDrawer();
+  // "?" outside a text field shows the shortcuts.
+  if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') && !document.activeElement?.isContentEditable && !document.activeElement?.closest?.('.xterm') && !document.querySelector('dialog[open]')) { event.preventDefault(); shortcutsDialog(); return; }
   // Browser-style tab keys: new cluster tab, close, cycle.
   const mod = event.ctrlKey || event.metaKey;
   if (mod && !event.shiftKey && event.key.toLowerCase() === 't') { event.preventDefault(); openSwitcher({ newTab: true }); }

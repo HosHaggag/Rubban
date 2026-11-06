@@ -800,3 +800,96 @@ input.narrow{width:70px;padding:4px 8px}
 .diff-cell.diff-add{background:var(--diff-add-bg)}
 .diff-cell.diff-gap{background:var(--well)}
 .diff-skip{grid-column:1/-1;padding:3px 12px;color:var(--muted);background:var(--panel-2);font:11px var(--font)}
+
+/* ---- UX pass: which cluster am I on, and what needs attention ------------------------------- */
+.context-switcher .context-label{display:flex;align-items:center;gap:6px}
+.context-env{padding:0 5px;border-radius:3px;font-size:9px;letter-spacing:.6px;line-height:14px;text-transform:uppercase;font-weight:700}
+.context-env.env-production{background:color-mix(in srgb,var(--bad) 24%,transparent);color:var(--bad-text)}
+.context-env.env-staging{background:color-mix(in srgb,var(--warn) 24%,transparent);color:var(--warn-text)}
+.context-env.env-development{background:color-mix(in srgb,var(--info) 22%,transparent);color:var(--info-text)}
+/* A production cluster is recognisable from any view: a thin line across the top of the window. */
+:root[data-env="production"] body::before,:root[data-env="staging"] body::before{content:'';position:fixed;left:0;right:0;top:0;height:2px;z-index:60;pointer-events:none;background:var(--bad)}
+:root[data-env="staging"] body::before{background:var(--warn)}
+.tab-ctx{flex:0 1 auto;min-width:0;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:600;line-height:16px;padding:0 6px 0 5px;border-left:2px solid var(--ctx);border-radius:2px;background:color-mix(in srgb,var(--ctx) 16%,transparent);color:var(--strong)}
+.tab-ns{flex:none;max-width:96px;overflow:hidden;text-overflow:ellipsis;font-size:10.5px;color:var(--dim)}
+.tab-ns::before{content:'· '}
+.bad-text{color:var(--bad-text)}
+/* Rows that need attention carry a coloured edge (and a faint tint when failing). */
+tr.tone-bad>td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+tr.tone-warn>td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+tr.tone-bad>td{background:color-mix(in srgb,var(--bad) 7%,transparent)}
+tr.tone-bad.clickable:hover td{background:color-mix(in srgb,var(--bad) 12%,var(--hover))}
+.state-pill{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.state-pill i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.state-pill.good i{background:var(--good)}
+.state-pill.warn i{background:var(--warn)}
+.state-pill.bad i{background:var(--bad)}
+.state-pill.warn{color:var(--warn-text)}
+.state-pill.bad{color:var(--bad-text);font-weight:500}
+.table-toolbar{flex-wrap:wrap}
+.facet-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-right:auto}
+.facet{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;font-size:11.5px;line-height:16px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--text);font-weight:500}
+.facet:hover{border-color:var(--line-strong);background:var(--hover);color:var(--strong)}
+.facet b{font-weight:600;color:var(--strong);font-variant-numeric:tabular-nums}
+.facet.active{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-text)}
+.facet.empty{opacity:.55}
+.facet-dot{display:inline-block;width:7px;height:7px;border-radius:50%}
+.facet-dot.good{background:var(--good)}
+.facet-dot.warn{background:var(--warn)}
+.facet-dot.bad{background:var(--bad)}
+/* The "no Prometheus" note is one slim line above the charts instead of a block beside them. */
+.metrics-fallback{grid-column:1/-1;padding:7px 12px;font-size:11.5px}
+/* Diagnosis: why an unhealthy pod or workload is failing, and the next step. */
+.diagnosis{margin:4px 0 14px;padding:12px 14px 12px;border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:var(--radius);background:color-mix(in srgb,var(--warn) 7%,var(--panel))}
+.diagnosis.bad{border-left-color:var(--bad);background:color-mix(in srgb,var(--bad) 8%,var(--panel))}
+.diagnosis-eyebrow{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--muted)}
+.diagnosis-mark{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--warn);color:var(--on-accent);font-size:10px;letter-spacing:0}
+.diagnosis.bad .diagnosis-mark{background:var(--bad)}
+.diagnosis-headline{margin-left:auto;font-weight:600;letter-spacing:.2px;text-transform:none;font-size:11px;color:var(--text)}
+.diagnosis-title{display:flex;align-items:center;gap:8px;margin:7px 0 4px;font-size:14px;font-weight:600;color:var(--strong)}
+.diagnosis.bad .diagnosis-title{color:var(--bad-text)}
+.diagnosis-count{font-size:11px;font-weight:500;padding:1px 7px;border-radius:999px;background:var(--panel-2);color:var(--text)}
+.diagnosis-text{margin:0 0 6px;line-height:1.5;color:var(--text)}
+.diagnosis-hints{margin:0 0 10px;padding-left:18px;line-height:1.5;color:var(--strong)}
+.diagnosis-hints li+li{margin-top:3px}
+.diagnosis code{font-family:var(--mono,'JetBrains Mono',monospace);font-size:.92em;padding:0 4px;border-radius:3px;background:var(--well);color:var(--strong);word-break:break-all}
+.diagnosis-actions{gap:6px;flex-wrap:wrap}
+.diagnosis-more{margin-top:10px;border-top:1px solid var(--line-soft);padding-top:8px}
+.diagnosis-more summary{cursor:pointer;color:var(--muted);font-size:12px}
+.diagnosis-extra{margin-top:8px;padding-left:10px;border-left:2px solid var(--warn)}
+.diagnosis-extra.bad{border-left-color:var(--bad)}
+.diagnosis-extra p{margin:3px 0;line-height:1.45}
+/* Problems: a summary first, then one row per thing to fix; columns line up whatever the actions. */
+.problem-summary{display:flex;align-items:center;gap:10px;margin:2px 0 6px;flex-wrap:wrap}
+.problem-stat{display:flex;align-items:baseline;gap:6px;padding:6px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2)}
+.problem-stat b{font-size:18px;font-weight:700;color:var(--strong);font-variant-numeric:tabular-nums}
+.problem-stat span{font-size:11.5px;color:var(--muted)}
+.problem-stat.critical{border-left:3px solid var(--bad)}
+.problem-stat.critical b{color:var(--bad-text)}
+.problem-stat.warning{border-left:3px solid var(--warn)}
+.problem-stat.warning b{color:var(--warn-text)}
+.problem-scope{margin-left:4px;font-size:12px}
+.problem-row{grid-template-columns:12px minmax(180px,1.3fr) 110px minmax(220px,2.2fr) 48px 236px}
+.problem-row.critical{box-shadow:inset 3px 0 0 var(--bad)}
+.problem-row.warning{box-shadow:inset 3px 0 0 var(--warn)}
+.problem-actions{justify-content:flex-end}
+.problem-cluster .context-env{margin-left:2px}
+/* Settings: a section index and settings that apply at once. */
+.settings-index{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 14px}
+.settings-index a{padding:4px 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--text);text-decoration:none}
+.settings-index a:hover{border-color:var(--accent-line);color:var(--accent-text);background:var(--accent-soft)}
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.setting-row p{margin:3px 0 0}
+.segmented{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--radius);overflow:hidden}
+.segmented button{border:0;border-radius:0;padding:6px 16px;background:transparent;color:var(--text);font-weight:500}
+.segmented button+button{border-left:1px solid var(--line-strong)}
+.segmented button.active{background:var(--accent);color:var(--on-accent)}
+.shortcut-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px 28px}
+.shortcut-group h3{margin:4px 0 8px;font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.shortcut-row{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;padding:4px 0;font-size:12.5px;border-bottom:1px solid var(--line-soft)}
+.shortcut-row kbd{display:inline-block;min-width:18px;text-align:center;padding:1px 6px;border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:4px;background:var(--panel-2);font:11px var(--mono,'JetBrains Mono',monospace);color:var(--strong)}
+.action-dialog:has(.shortcut-groups){width:min(860px,92vw);max-width:none}
+.welcome-import{margin-top:18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
+.welcome-import>summary{cursor:pointer;padding:12px 16px;font-size:12.5px}
+.welcome-import[open]>summary{border-bottom:1px solid var(--line)}
+.welcome-import .welcome-import-body{padding:14px}
