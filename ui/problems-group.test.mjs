@@ -29,3 +29,8 @@ test('critical first, and totals count every problem', () => {
   const totals = totalsOf(list);
   assert.equal(totals.critical, 1); assert.equal(totals.warning, 1); assert.equal(totals.clusters.size, 1);
 });
+
+test('ErrImagePull and ImagePullBackOff of one workload are one row', () => {
+  const groups = groupProblems([p('fc-6fb954d645-dscq5', 'ErrImagePull'), p('fc-6fb954d645-xvbf7', 'ImagePullBackOff')]);
+  assert.equal(groups.length, 1); assert.equal(groups[0].members.length, 2);
+});

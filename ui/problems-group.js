@@ -9,6 +9,8 @@ export function workloadOfPod(name = '') {
 }
 
 const RANK = { critical: 0, warning: 1, info: 2 };
+// Kubernetes alternates between these names for one failure; group them as one.
+const sameFailure = title => String(title || '').replace(/^ErrImagePull$/, 'ImagePullBackOff').replace(/^(RunContainerError|Error)$/, 'CrashLoopBackOff');
 
 export function groupProblems(problems) {
   // A pod that is already reported critical needs no separate warning ("N restarts", "Pending", "Not ready").
@@ -17,7 +19,7 @@ export function groupProblems(problems) {
   const groups = new Map();
   for (const problem of kept) {
     const owner = problem.resource === 'pods' ? workloadOfPod(problem.name) : problem.name;
-    const key = [problem.context, problem.resource, problem.namespace, owner, problem.severity, problem.title].join('|');
+    const key = [problem.context, problem.resource, problem.namespace, owner, problem.severity, sameFailure(problem.title)].join('|');
     const group = groups.get(key);
     if (!group) { groups.set(key, { ...problem, owner, members: [problem] }); continue; }
     group.members.push(problem);
