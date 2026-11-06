@@ -45,6 +45,10 @@ The **Timeline** view answers the first question of every incident: rollouts (wi
 
 **Snapshot** in the details of a pod or workload, on a Problems row, or **Snapshot namespace** in Ctrl+K, collects Rubban's diagnosis, pod and container states with the last exit codes, events (warnings first), the logs of every container and of the run that crashed, the owner chain, related Services, ConfigMaps and Secrets (names only), nodes and the namespace's open problems into one Markdown report. Secret values are never included and anything that looks like a token, password or key is replaced with `‹redacted›`. Copy it, save it, or **Ask AI** for a root-cause draft from your own AI CLI.
 
+### Why it is failing, in plain words
+
+Open an unhealthy pod or workload and its details start with a **Diagnosis**: what is wrong, the likely cause and the next step. It reads exit codes, image pull errors, missing ConfigMaps and Secrets, probes aimed at the wrong port and requests larger than any node, and puts **Logs of the crashed run**, **Events** or **Roll back** one click away. Every list marks the rows that need attention and offers **Healthy · Degraded · Failing** filters.
+
 ### Production and staging, side by side
 
 <img src="docs/images/screenshot-compare.png" alt="The storefront Deployment compared between a production and a staging cluster, with the replica count, image tag and an added feature flag marked" width="100%">
