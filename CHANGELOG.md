@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Rollouts you can follow, with one-click Undo.** Restart, Scale, Roll back, Pause/Resume and Apply (from Create or a YAML tab) of a Deployment, StatefulSet or DaemonSet now open a card in the bottom-right corner that follows the rollout live, in its own cluster and namespace, across views and tabs. It shows the cluster's colour and production tag, the action and how long it has run, a bar of the new revision's pods (ready, not ready), the old ones and those terminating, updated/ready/available against desired, the revisions (`rev 3 → 4`), and a verdict in plain words: Progressing, Complete (folds itself after 20 seconds), Stalled (no progress for a minute), Failing (new pods in a crash loop, unable to pull their image or unschedulable, with the reason and the next step from the diagnosis), Progress deadline exceeded, or Paused. **Undo** rolls back to the revision the change started from (or scales back after a Scale), behind the production guard; **Logs** follows the new revision's pods; **Pause**/**Resume** and **Details** are next to it. **Watch rollout** in a workload's menu and details follows a rollout started elsewhere. Several cards stack; dismissing one stops its watches.
+
 ## 0.13.1: The RabbitMQ console no longer freezes Rubban
 
 - **Opening a RabbitMQ console no longer freezes the window.** The management console signs in and starts with requests that hold its page until the cluster answers, and it ran in the same web view process as Rubban's own page. Every one of those answers came through the cluster tunnel, so the whole window stopped responding, and went blank when it had to repaint, until they arrived; when a tunnel connection stalled, it stayed that way until Rubban was closed. The console now runs in a process of its own: a slow or stuck cluster holds up the console only, and the rest of Rubban keeps working.

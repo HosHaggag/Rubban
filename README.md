@@ -64,6 +64,7 @@ CPU and memory are shown for pods, workloads, namespaces and nodes against their
 - **Import a kubeconfig.** Paste one or pick a file. Rubban keeps a private copy and never changes your own kubeconfig.
 - **Review before apply.** The Create dialog and the YAML tab show the coloured diff, the objects the change touches, kubectl's warnings and the server's dry-run result before **Apply** is enabled.
 - **Actions.** Scale, restart, roll back, cordon, drain and evict, and trigger CronJobs.
+- **Rollouts you can follow, and undo.** After a restart, scale, roll back, pause or apply of a Deployment, StatefulSet or DaemonSet, a card in the bottom-right corner follows the rollout live: new pods ready and not ready, old pods, revision `old → new`, and a plain verdict (Progressing, Complete, Stalled, Failing with the reason, Progress deadline exceeded, Paused). **Undo**, the new pods' logs, Pause/Resume and the details are on the card; **Watch rollout** in a workload's menu follows one started elsewhere.
 - **Terminals.** Pod exec and attach, node shells and a local terminal scoped to the selected cluster open in a tabbed dock.
 - **Port forwards that survive.** A forward restarts on the same local port when kubectl loses its connection, and comes back when Rubban starts again.
 - **Helm.** Browse charts, and manage releases: values, history, upgrade, rollback and uninstall.
@@ -366,6 +367,7 @@ Rubban acts with *your* Kubernetes identity, so cluster RBAC decides what works.
 | Edit, scale, restart, delete | `patch`, `update` or `delete` on the resource |
 | Compare across clusters | `get` on the resource in each cluster (Secrets are refused) |
 | Review before apply | `create`/`patch` with dry-run on the resource (the review asks the API server to validate the manifest without storing it) |
+| Rollout tracker | `list` and `watch` on the workload's kind, `pods` and `replicasets` (Deployments) or `controllerrevisions` (StatefulSets, DaemonSets) in its namespace; **Undo** and **Pause** need `patch` on the workload |
 
 **Settings › Access** checks all of these for you: it asks the cluster what your identity may do in the namespace you choose, and **Copy as text** gives you something to send to an administrator.
 
