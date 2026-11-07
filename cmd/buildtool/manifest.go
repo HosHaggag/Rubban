@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/HosHaggag/rubban/internal/updater"
 )
 
 // Manifest keys use Node's platform and arch names so installed 0.11.0 apps keep matching.
@@ -51,6 +53,10 @@ func buildManifest(files []fileInfo, version, notes string) (string, latestManif
 		if m := setupRE.FindStringSubmatch(f.Name); m != nil && m[1] == version {
 			assets[setupKey] = f
 		}
+	}
+	// Windows builds 0.12.0 to 0.14.0 cannot update themselves; the notes they show link the installer.
+	if _, ok := assets[setupKey]; ok {
+		notes = updater.LegacyWindowsNote(updater.DefaultRepo, version) + notes
 	}
 	return strings.Join(sums, "\n") + "\n", latestManifest{Version: version, Assets: assets, Notes: notes}, nil
 }

@@ -9,8 +9,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // installedMarker is written next to Rubban.exe by the Windows installer.
@@ -147,8 +149,9 @@ func BridgeScript(source []byte, goos string, smoke bool) []byte {
 }
 
 // migrationSources lists, in order, the folders an installed build looks in for settings from an
-// earlier layout: the Install-Rubban.ps1 data folder, and the Rubban-Data next to the place the
-// installer was started from (recorded in installed.json as migratedFrom).
+// earlier layout: the Install-Rubban.ps1 data folder, the Rubban-Data next to the place the
+// installer was started from (recorded in installed.json as migratedFrom), and then the data
+// folders of zip copies unpacked in the usual places, most recently used first.
 func migrationSources(exe, home string) []string {
 	var out []string
 	if home != "" {
@@ -157,7 +160,75 @@ func migrationSources(exe, home string) []string {
 	if info, ok := readInstalled(exe); ok && info.MigratedFrom != "" {
 		out = append(out, info.MigratedFrom)
 	}
+	return append(out, portableDataFolders(home)...)
+}
+
+// portableDataFolders finds the Rubban-Data folders of Windows zip copies, which sit beside the
+// unpacked folder: <place>\Rubban-Data or <place>\<folder>\Rubban-Data, where <place> is the home
+// folder, Downloads, Desktop or Documents (also under OneDrive). Someone who updates an old zip
+// copy from the link in its update panel runs the installer from Downloads, far from that folder.
+// Only folders with settings are listed, the most recently changed first.
+func portableDataFolders(home string) []string {
+	if home == "" {
+		return nil
+	}
+	var places []string
+	for _, base := range []string{home, filepath.Join(home, "OneDrive")} {
+		for _, name := range []string{"", "Downloads", "Desktop", "Documents"} {
+			places = append(places, filepath.Join(base, name))
+		}
+	}
+	type found struct {
+		dir     string
+		changed time.Time
+	}
+	var hits []found
+	seen := map[string]bool{}
+	consider := func(dir string) {
+		if seen[dir] {
+			return
+		}
+		seen[dir] = true
+		if changed, ok := settingsChanged(dir); ok {
+			hits = append(hits, found{dir, changed})
+		}
+	}
+	for _, place := range places {
+		entries, err := os.ReadDir(place)
+		if err != nil {
+			continue
+		}
+		consider(filepath.Join(place, "Rubban-Data"))
+		for i, e := range entries {
+			if i >= 2000 {
+				break
+			}
+			if e.IsDir() && e.Name() != "Rubban-Data" {
+				consider(filepath.Join(place, e.Name(), "Rubban-Data"))
+			}
+		}
+	}
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].changed.After(hits[j].changed) })
+	out := make([]string, len(hits))
+	for i, h := range hits {
+		out[i] = h.dir
+	}
 	return out
+}
+
+// settingsChanged reports when the settings in dir last changed, and whether it has any.
+func settingsChanged(dir string) (time.Time, bool) {
+	var latest time.Time
+	ok := false
+	for _, name := range []string{"preferences.json", filepath.Join("kubeconfigs", "index.json")} {
+		if st, err := os.Stat(filepath.Join(dir, name)); err == nil && !st.IsDir() {
+			ok = true
+			if st.ModTime().After(latest) {
+				latest = st.ModTime()
+			}
+		}
+	}
+	return latest, ok
 }
 
 func isDir(p string) bool {

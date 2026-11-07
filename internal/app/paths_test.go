@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func env(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
@@ -239,3 +240,37 @@ func TestMigrateDataSourcesAndGuards(t *testing.T) {
 }
 
 func strconvQuote(s string) string { b, _ := json.Marshal(s); return string(b) }
+
+// An old zip copy updated from the link in its update panel runs the installer from Downloads, so
+// the copy's Rubban-Data is found where zips are usually unpacked, the most recently used first,
+// after the Install-Rubban.ps1 folder and the recorded one.
+func TestMigrateDataFindsUnpackedZipCopies(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	older := filepath.Join(home, "Desktop", "Rubban-0.12.1-Windows-x64", "Rubban-Data")
+	newer := filepath.Join(home, "Downloads", "Rubban-0.13.0-Windows-x64", "Rubban-Data")
+	writeSettings(t, older)
+	writeSettings(t, newer)
+	past := time.Now().Add(-48 * time.Hour)
+	_ = os.Chtimes(filepath.Join(older, "preferences.json"), past, past)
+	_ = os.Chtimes(filepath.Join(older, "kubeconfigs", "index.json"), past, past)
+	_ = os.MkdirAll(filepath.Join(home, "Downloads", "unrelated", "Rubban-Data"), 0o755) // no settings
+	exe := installedLayout(t, root, `{"installer":"inno"}`)
+
+	if got := portableDataFolders(home); len(got) != 2 || got[0] != newer || got[1] != older {
+		t.Fatalf("found %v", got)
+	}
+	data := filepath.Join(root, "Local", "Rubban")
+	if from, err := MigrateData(exe, data, home); err != nil || from != newer {
+		t.Fatalf("from %q %v", from, err)
+	}
+	// The Install-Rubban.ps1 folder still comes first.
+	old := filepath.Join(home, "Rubban", "Rubban-Data")
+	writeSettings(t, old)
+	if from, _ := MigrateData(exe, filepath.Join(root, "Local2", "Rubban"), home); from != old {
+		t.Fatalf("order: %q", from)
+	}
+	if got := portableDataFolders(""); got != nil {
+		t.Fatalf("no home: %v", got)
+	}
+}

@@ -63,7 +63,9 @@ func TestRightsizingHistory(t *testing.T) {
 	if !reflect.DeepEqual(res.Value["containers"], want) {
 		t.Fatalf("containers %v", res.Value["containers"])
 	}
-	queries := x.find(func(a []string) bool { return strings.Contains(rawPath(a), "/api/v1/query?") && !strings.HasSuffix(rawPath(a), probeQuery) })
+	queries := x.find(func(a []string) bool {
+		return strings.Contains(rawPath(a), "/api/v1/query?") && !strings.HasSuffix(rawPath(a), probeQuery)
+	})
 	if len(queries) != 3 {
 		t.Fatalf("queries %d", len(queries))
 	}

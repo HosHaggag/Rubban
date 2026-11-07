@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/HosHaggag/rubban/internal/updater"
 )
 
 const changelog = "# Changelog\n\n## 0.12.0: Go\n\n- one\n\n## 0.11.0\n\n- old\n\n## 0.10.0\n\n"
@@ -269,5 +271,40 @@ func TestDescribeReleaseFilesIncludesTheSetup(t *testing.T) {
 	files, err := describeZips(dir)
 	if err != nil || len(files) != 2 || files[0].Name != "Rubban-0.13.0-Setup.exe" || files[1].Name != "Rubban-0.13.0-Windows-x64.zip" {
 		t.Fatalf("%v %v", files, err)
+	}
+}
+
+// The manifest keys must be the ones a running Windows build asks for; a mismatch here is what left
+// Windows builds 0.12.0 to 0.14.0 unable to update. Those builds still look for "windows-x64", so
+// that key must never appear: listing it would send them down the macOS install path. The notes they
+// show start with a link to the installer, which builds with a working updater remove.
+func TestManifestKeysMatchTheUpdaterAndHelpOldWindowsBuilds(t *testing.T) {
+	zip := fileInfo{"Rubban-0.14.1-Windows-x64.zip", strings.Repeat("a", 64), 10}
+	setup := fileInfo{"Rubban-0.14.1-Setup.exe", strings.Repeat("d", 64), 40}
+	mac := fileInfo{"Rubban-0.14.1-macOS-arm64.zip", strings.Repeat("b", 64), 10}
+	_, latest, err := buildManifest([]fileInfo{zip, setup, mac}, "0.14.1", "- notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	windows := updater.NodePlatform("windows") + "-" + updater.NodeArch("amd64")
+	if latest.Assets[windows] != zip || latest.Assets[windows+"-setup"] != setup {
+		t.Fatalf("a Windows build asks for %q: %v", windows, latest.Assets)
+	}
+	if latest.Assets[updater.NodePlatform("darwin")+"-"+updater.NodeArch("arm64")] != mac {
+		t.Fatalf("macOS key: %v", latest.Assets)
+	}
+	if _, ok := latest.Assets["windows-x64"]; ok {
+		t.Fatal("windows-x64 must not be listed")
+	}
+	url := "https://github.com/HosHaggag/Rubban/releases/download/v0.14.1/Rubban-0.14.1-Setup.exe"
+	if !strings.HasPrefix(latest.Notes, "> **Seeing") || !strings.Contains(latest.Notes, "]("+url+")") || !strings.HasSuffix(latest.Notes, "\n\n- notes") {
+		t.Fatalf("notes %q", latest.Notes)
+	}
+	if got := updater.StripLegacyNote(latest.Notes); got != "- notes" {
+		t.Fatalf("stripped %q", got)
+	}
+	_, plain, _ := buildManifest([]fileInfo{zip}, "0.14.1", "- notes")
+	if plain.Notes != "- notes" {
+		t.Fatalf("a release without an installer has nothing to link: %q", plain.Notes)
 	}
 }

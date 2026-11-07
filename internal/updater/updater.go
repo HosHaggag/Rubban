@@ -355,6 +355,7 @@ func (u *Updater) doCheck(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	notes = StripLegacyNote(notes)
 	if u.cfg.Installed && u.cfg.Platform == "win32" {
 		// Releases older than the installer have no setup entry: those keep updating from the zip.
 		_, setup, _, err := ValidateManifest(&manifest, u.key+"-setup")

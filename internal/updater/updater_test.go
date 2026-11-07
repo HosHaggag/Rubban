@@ -948,3 +948,20 @@ func TestNodePlatformMatchesManifestKeys(t *testing.T) {
 		t.Errorf("NodeArch(amd64) = %q", got)
 	}
 }
+
+func TestLegacyWindowsNoteIsHiddenFromWorkingBuilds(t *testing.T) {
+	note := LegacyWindowsNote("o/r", "1.2.3")
+	if !strings.Contains(note, "(https://github.com/o/r/releases/download/v1.2.3/Rubban-1.2.3-Setup.exe)") {
+		t.Fatalf("note %q", note)
+	}
+	for in, want := range map[string]string{note + "- a\n- b": "- a\n- b", "- a": "- a", note: "", "": ""} {
+		if got := StripLegacyNote(in); got != want {
+			t.Errorf("StripLegacyNote(%q) = %q, want %q", in, got, want)
+		}
+	}
+	h := setup(t, opts{})
+	h.manifest["notes"] = note + "- better"
+	if st := h.u.Check(context.Background()); st.Notes != "- better" {
+		t.Fatalf("notes shown %q", st.Notes)
+	}
+}

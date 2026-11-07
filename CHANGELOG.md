@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.1: Updates install on Windows again
+
+- **In-app updates work on Windows.** Since 0.12.0 the Windows app asked the update server for a "windows-x64" download, which the release lists as "win32-x64", so **Check now** ended in "Version … has no download for windows-x64" and no update could be installed from the app. From this version on, Rubban finds its download, an installed copy updates through the installer, and a zip copy replaces itself as before.
+- **Getting there from 0.12.0–0.14.0.** Those versions cannot install an update themselves. Their update panel now starts with a **Download the installer** link: run it once, it closes Rubban, puts the new version in its place and keeps your clusters and settings. After that, updates install from Rubban.
+- **Settings follow a zip copy into the installed app wherever it was unzipped.** On first start the installed app now also looks for the Rubban-Data of zip copies in your home folder, Downloads, Desktop and Documents (OneDrive included), taking the most recently used, instead of only next to the installer.
+
 ## 0.14.0: Why it fails, and ten new views
 
 - **Why it is failing, in plain words.** The details of an unhealthy pod or workload open with a **Diagnosis**: what is wrong, the likely cause and the next step as a button. It explains exit codes (1, 137/OOMKilled, 127, 143, 0), image tags that do not exist, unauthorised or unreachable registries, missing ConfigMaps, Secrets and keys, readiness probes aimed at a port the container does not declare, and pods that request more than any node has ("requests 48 cores, the largest node has 12"). **Logs of the crashed run**, **Events** and **Roll back to revision N** are one click away.
