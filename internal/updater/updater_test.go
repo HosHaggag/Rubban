@@ -936,3 +936,15 @@ func TestSetupAssetNamesAreValidatedPerKey(t *testing.T) {
 		t.Fatal("isSetupAsset")
 	}
 }
+
+// The release manifest keys Windows as "win32"; a "windows-x64" key finds no download.
+func TestNodePlatformMatchesManifestKeys(t *testing.T) {
+	for goos, want := range map[string]string{"windows": "win32", "darwin": "darwin", "linux": "linux"} {
+		if got := NodePlatform(goos); got != want {
+			t.Errorf("NodePlatform(%q) = %q, want %q", goos, got, want)
+		}
+	}
+	if got := NodeArch("amd64"); got != "x64" {
+		t.Errorf("NodeArch(amd64) = %q", got)
+	}
+}

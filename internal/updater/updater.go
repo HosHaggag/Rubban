@@ -143,8 +143,13 @@ type Updater struct {
 	stopping bool
 }
 
-// NodePlatform maps runtime.GOOS to the names Node used in manifest keys.
-func NodePlatform(goos string) string { return goos }
+// NodePlatform maps runtime.GOOS to the names Node used in manifest keys ("win32-x64", "darwin-arm64").
+func NodePlatform(goos string) string {
+	if goos == "windows" {
+		return "win32"
+	}
+	return goos
+}
 
 // NodeArch maps runtime.GOARCH to the names Node used in manifest keys.
 func NodeArch(goarch string) string {
